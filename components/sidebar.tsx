@@ -17,7 +17,8 @@ import {
   Type,
   Trash2,
   Archive,
-  Bell
+  Bell,
+  Bot
 } from "lucide-react";
 import { motion } from "framer-motion";
 import Link from "next/link";
@@ -39,6 +40,7 @@ const NAV_ITEMS = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
   { label: "Vault", href: "/entries", icon: Database },
   { label: "Palace", href: "/calendar", icon: CalendarIcon },
+  { label: "Companion", href: "/chat", icon: Bot },
 ];
 
 const FONT_FAMILIES = {
@@ -86,7 +88,7 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
                     <Button 
                       variant="ghost" 
                       className={cn(
-                        "w-full justify-start text-sm font-medium h-11 px-3 rounded-2xl transition-all relative group",
+                        "w-full justify-start text-sm font-medium h-11 px-3 rounded-xl transition-all relative group",
                         active ? "bg-zinc-900 text-zinc-50 dark:bg-white dark:text-zinc-900 shadow-lg" : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
                       )}
                     >
@@ -95,7 +97,7 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
                       {active && (
                         <motion.div 
                           layoutId="nav-pill" 
-                          className="absolute inset-0 rounded-2xl bg-zinc-900 dark:bg-white -z-10" 
+                          className="absolute inset-0 rounded-xl bg-zinc-900 dark:bg-white -z-10" 
                         />
                       )}
                     </Button>
@@ -112,7 +114,7 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
              <div className="space-y-1">
                 <Button 
                   variant="ghost" 
-                  className="w-full justify-start text-sm font-medium h-11 px-3 rounded-2xl text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                  className="w-full justify-start text-sm font-medium h-11 px-3 rounded-xl text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
                   onClick={() => router.push("/entries?view=active")}
                 >
                   <LayoutDashboard className="mr-3 h-4 w-4 text-zinc-400" />
@@ -120,7 +122,7 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
                 </Button>
                 <Button 
                   variant="ghost" 
-                  className="w-full justify-start text-sm font-medium h-11 px-3 rounded-2xl text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                  className="w-full justify-start text-sm font-medium h-11 px-3 rounded-xl text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
                   onClick={() => router.push("/entries?view=archived")}
                 >
                   <Archive className="mr-3 h-4 w-4 text-zinc-400" />
@@ -128,7 +130,7 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
                 </Button>
                 <Button 
                   variant="ghost" 
-                  className="w-full justify-start text-sm font-medium h-11 px-3 rounded-2xl text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                  className="w-full justify-start text-sm font-medium h-11 px-3 rounded-xl text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
                   onClick={() => router.push("/entries?view=deleted")}
                 >
                   <Trash2 className="mr-3 h-4 w-4 text-zinc-400" />
@@ -143,11 +145,11 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
              <p className="px-3 mb-3 text-[10px] font-bold uppercase tracking-widest text-zinc-400 opacity-50">Settings</p>
              <div className="space-y-1">
                 <Dialog>
-                  <DialogTrigger className={cn(buttonVariants({ variant: "ghost" }), "w-full justify-start text-sm font-medium h-11 px-3 rounded-2xl text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900")}>
+                  <DialogTrigger className={cn(buttonVariants({ variant: "ghost" }), "w-full justify-start text-sm font-medium h-11 px-3 rounded-xl text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900")}>
                     <Settings className="mr-3 h-4 w-4 text-zinc-400" />
                     Appearance
                   </DialogTrigger>
-                  <DialogContent className="sm:max-w-[425px] rounded-3xl border-zinc-100 dark:border-zinc-900 shadow-2xl overflow-y-auto max-h-[90vh]">
+                  <DialogContent className="sm:max-w-[425px] rounded-xl border-zinc-100 dark:border-zinc-900 shadow-2xl overflow-y-auto max-h-[90vh]">
                     <DialogHeader>
                       <DialogTitle className="text-xl font-bold tracking-tight">Vault Appearance</DialogTitle>
                       <DialogDescription className="text-xs uppercase tracking-widest font-bold text-zinc-400">Personalize your majestic experience</DialogDescription>
@@ -249,7 +251,7 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
                 
                 <Button 
                   variant="ghost" 
-                  className="w-full justify-start text-sm font-medium h-11 px-3 rounded-2xl text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                  className="w-full justify-start text-sm font-medium h-11 px-3 rounded-xl text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
                   onClick={logout}
                 >
                   <LogOut className="mr-3 h-4 w-4 text-zinc-400" />
@@ -262,7 +264,7 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
       
       {user && (
         <div className="p-4 mt-auto">
-          <div className="bg-zinc-100 dark:bg-zinc-900 rounded-3xl p-4 border border-zinc-200 dark:border-zinc-800 flex items-center gap-3">
+          <div className="bg-zinc-100 dark:bg-zinc-900 rounded-xl p-4 border border-zinc-200 dark:border-zinc-800 flex items-center gap-3">
              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-amber-500 to-rose-500 flex items-center justify-center text-white font-bold text-sm">
                {user.username[0].toUpperCase()}
              </div>

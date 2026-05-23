@@ -118,7 +118,13 @@ export default function JournalPage() {
           }
         }
       } else if (decryptedEntries.length > 0 && !selectedId) {
-        handleSelect(decryptedEntries[0]);
+        const today = new Date().toDateString();
+        const lastEntryDate = new Date(decryptedEntries[0].created_at).toDateString();
+        if (today !== lastEntryDate) {
+          handleNewEntry();
+        } else {
+          handleSelect(decryptedEntries[0]);
+        }
       }
     } catch (error) {
       console.error("Failed to load entries:", error);
@@ -323,7 +329,7 @@ export default function JournalPage() {
       style={{ fontFamily: `var(--${appearance.fontFamily})` }}
     >
       <Dialog open={isQuickEntryOpen} onOpenChange={setIsQuickEntryOpen}>
-        <DialogContent className="sm:max-w-[500px] rounded-3xl border-zinc-100 dark:border-zinc-900 shadow-2xl">
+        <DialogContent className="sm:max-w-[500px] rounded-xl border-zinc-100 dark:border-zinc-900 shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold tracking-tight">Quick Reflection</DialogTitle>
             <DialogDescription className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Capture this moment instantly</DialogDescription>
@@ -333,7 +339,7 @@ export default function JournalPage() {
               placeholder="What's on your mind right now?"
               value={quickEntryContent}
               onChange={(e) => setQuickEntryContent(e.target.value)}
-              className={cn("w-full h-32 bg-zinc-50 dark:bg-zinc-900 border-none rounded-2xl p-4 text-sm focus:ring-1 focus:ring-zinc-200 dark:focus:ring-zinc-800 outline-none resize-none", appearance.fontFamily)}
+              className={cn("w-full h-32 bg-zinc-50 dark:bg-zinc-900 border-none rounded-xl p-4 text-sm focus:ring-1 focus:ring-zinc-200 dark:focus:ring-zinc-800 outline-none resize-none", appearance.fontFamily)}
             />
             <Button className="w-full h-11 rounded-xl font-bold uppercase tracking-widest text-xs" onClick={handleQuickEntrySave}>Save Thought</Button>
           </div>
@@ -350,19 +356,24 @@ export default function JournalPage() {
         )}
 
         <div className="absolute right-6 top-6 z-10 flex flex-col items-end gap-2">
-           <Popover>
-            <PopoverTrigger className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "h-10 px-4 text-xs font-medium text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 rounded-xl border border-zinc-100 dark:border-zinc-900 bg-white/50 dark:bg-black/50 backdrop-blur-sm")}>
-              <Sparkles className={`h-4 w-4 mr-2 ${isAiLoading ? 'animate-pulse' : ''}`} /> AI Assist
-            </PopoverTrigger>
-            <PopoverContent className="w-48 p-2 rounded-xl border-zinc-100 dark:border-zinc-900 shadow-2xl" align="end">
-              <div className="px-2 py-1.5 mb-1 text-[10px] font-bold uppercase tracking-widest text-zinc-400 flex justify-between">
-                <span>Credits</span>
-                <span className="text-zinc-900 dark:text-zinc-100">{user?.credits ?? 0}/10</span>
-              </div>
-              <Button variant="ghost" className="w-full justify-start text-xs h-9 rounded-lg" onClick={() => handleAiAssist("summarize")}>Summarize Entry</Button>
-              <Button variant="ghost" className="w-full justify-start text-xs h-9 rounded-lg" onClick={() => handleAiAssist("format")}>Polished Flow</Button>
-            </PopoverContent>
-          </Popover>
+          <div className="flex items-center gap-2">
+            <Button onClick={handleNewEntry} variant="outline" size="sm" className="h-10 px-4 text-xs font-medium text-zinc-900 dark:text-zinc-100 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-black/50 backdrop-blur-sm hover:bg-zinc-100 dark:hover:bg-zinc-900">
+              <Plus className="h-4 w-4 mr-2" /> New Entry
+            </Button>
+            <Popover>
+              <PopoverTrigger className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "h-10 px-4 text-xs font-medium text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 rounded-xl border border-zinc-100 dark:border-zinc-900 bg-white/50 dark:bg-black/50 backdrop-blur-sm")}>
+                <Sparkles className={`h-4 w-4 mr-2 ${isAiLoading ? 'animate-pulse' : ''}`} /> AI Assist
+              </PopoverTrigger>
+              <PopoverContent className="w-48 p-2 rounded-xl border-zinc-100 dark:border-zinc-900 shadow-2xl" align="end">
+                <div className="px-2 py-1.5 mb-1 text-[10px] font-bold uppercase tracking-widest text-zinc-400 flex justify-between">
+                  <span>Credits</span>
+                  <span className="text-zinc-900 dark:text-zinc-100">{user?.credits ?? 0}/10</span>
+                </div>
+                <Button variant="ghost" className="w-full justify-start text-xs h-9 rounded-lg" onClick={() => handleAiAssist("summarize")}>Summarize Entry</Button>
+                <Button variant="ghost" className="w-full justify-start text-xs h-9 rounded-lg" onClick={() => handleAiAssist("format")}>Polished Flow</Button>
+              </PopoverContent>
+            </Popover>
+          </div>
           <AnimatePresence>{aiError && <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/30 p-3 rounded-xl flex items-center gap-3 text-red-600 dark:text-red-400 max-w-xs shadow-lg"><AlertCircle className="h-4 w-4 shrink-0" /><p className="text-[10px] font-bold uppercase tracking-wider">{aiError}</p></motion.div>}</AnimatePresence>
         </div>
 
@@ -383,7 +394,7 @@ export default function JournalPage() {
                         <Smile className="h-4 w-4 transition-transform group-hover:scale-110" />
                         {selectedMood ? `${selectedMood.emoji} ${selectedMood.name}` : "Set Mood"}
                       </PopoverTrigger>
-                      <PopoverContent className="w-64 p-3 rounded-2xl border-zinc-100 dark:border-zinc-900 shadow-2xl" align="start">
+                      <PopoverContent className="w-64 p-3 rounded-xl border-zinc-100 dark:border-zinc-900 shadow-2xl" align="start">
                         <div className="grid grid-cols-3 gap-2">
                           {moods.map((m) => (
                             <button key={m.id} onClick={() => { setMoodId(m.id); }} className={cn("flex flex-col items-center gap-1.5 p-3 rounded-xl transition-all", moodId === m.id ? "bg-zinc-100 dark:bg-zinc-900" : "hover:bg-zinc-50 dark:hover:bg-zinc-900/50")}>
@@ -445,7 +456,7 @@ export default function JournalPage() {
 
         <AnimatePresence>
           {(aiSummary !== null || aiSuggestion !== null) && (
-            <motion.div initial={{ opacity: 0, y: 20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20, scale: 0.95 }} className="fixed bottom-24 right-8 w-[400px] border border-zinc-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md rounded-2xl shadow-2xl flex flex-col z-50 overflow-hidden">
+            <motion.div initial={{ opacity: 0, y: 20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20, scale: 0.95 }} className="fixed bottom-24 right-8 w-[400px] border border-zinc-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md rounded-xl shadow-2xl flex flex-col z-50 overflow-hidden">
               <div className="p-5 flex items-center justify-between border-b border-zinc-100 dark:border-zinc-900 bg-zinc-50/50 dark:bg-zinc-900/50">
                 <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400">
                   <Sparkles className="h-3.5 w-3.5" /> {aiSummary !== null ? "AI Reflection" : "Polished Flow"}

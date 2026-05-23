@@ -53,6 +53,18 @@ export async function initDb() {
   }
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS ai_usage_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      prompt_tokens INTEGER DEFAULT 0,
+      completion_tokens INTEGER DEFAULT 0,
+      feature TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+  `);
+
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS moods (
       id INTEGER PRIMARY KEY,
       name TEXT NOT NULL,

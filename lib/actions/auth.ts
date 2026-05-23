@@ -136,7 +136,7 @@ export async function getSession() {
   const session = (await cookies()).get(SESSION_COOKIE);
   if (!session?.value) return null;
   try {
-    return JSON.parse(session.value) as { userId: number; username: string };
+    return JSON.parse(session.value) as { userId: number; username: string; isVerified?: boolean };
   } catch (e) {
     return null;
   }
@@ -154,10 +154,23 @@ export async function logout() {
 export async function getUserData(username: string) {
   const user = await getUserByUsername(username);
   if (!user) return null;
+
+  const today = new Date().toISOString().split('T')[0];
+  let credits = Number(user.ai_credits);
+
+  if (user.last_ai_usage_date !== today) {
+    credits = 10;
+    await db.execute({
+      sql: "UPDATE users SET ai_credits = ?, last_ai_usage_date = ? WHERE id = ?",
+      args: [credits, today, user.id]
+    });
+  }
+
   return {
     salt: user.encryption_salt,
-    credits: Number(user.ai_credits),
+    credits: credits,
     role: user.role,
+    settings: user.settings,
     master_key_password: user.master_key_password,
     master_key_pin: user.master_key_pin
   };
@@ -218,9 +231,29 @@ export async function updateSettings(settings: any) {
   const session = await getSession();
   if (!session) throw new Error("Unauthorized");
 
+  const user = await getUserByUsername(session.username);
+  const currentSettings = JSON.parse(user.settings || '{}');
+  const mergedSettings = { ...currentSettings, ...settings };
+
   await db.execute({
     sql: "UPDATE users SET settings = ? WHERE id = ?",
-    args: [JSON.stringify(settings), session.userId]
+    args: [JSON.stringify(mergedSettings), session.userId]
+  });
+
+  return { success: true };
+}
+
+export async function updatePersonalityProfile(profile: string) {
+  const session = await getSession();
+  if (!session) throw new Error("Unauthorized");
+
+  const user = await getUserByUsername(session.username);
+  const currentSettings = JSON.parse(user.settings || '{}');
+  currentSettings.personalityProfile = profile;
+
+  await db.execute({
+    sql: "UPDATE users SET settings = ? WHERE id = ?",
+    args: [JSON.stringify(currentSettings), session.userId]
   });
 
   return { success: true };

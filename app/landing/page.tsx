@@ -68,11 +68,11 @@ export default function LandingPage() {
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link href="/">
-                <Button className="h-14 px-8 rounded-2xl text-sm font-bold uppercase tracking-widest bg-zinc-900 dark:bg-white text-white dark:text-black hover:scale-105 transition-transform">
+                <Button className="h-14 px-8 rounded-xl text-sm font-bold uppercase tracking-widest bg-zinc-900 dark:bg-white text-white dark:text-black hover:scale-105 transition-transform">
                   Start Journaling Free
                 </Button>
               </Link>
-              <Button variant="ghost" className="h-14 px-8 rounded-2xl text-sm font-bold uppercase tracking-widest group">
+              <Button variant="ghost" className="h-14 px-8 rounded-xl text-sm font-bold uppercase tracking-widest group">
                 Learn Privacy <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
               </Button>
             </div>
@@ -95,9 +95,9 @@ export default function LandingPage() {
                 whileInView={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.1 }}
                 viewport={{ once: true }}
-                className="bg-white dark:bg-black p-8 rounded-3xl border border-zinc-100 dark:border-zinc-800 shadow-sm"
+                className="bg-white dark:bg-black p-8 rounded-xl border border-zinc-100 dark:border-zinc-800 shadow-sm"
               >
-                <div className="w-12 h-12 rounded-2xl bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center mb-6">
+                <div className="w-12 h-12 rounded-xl bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center mb-6">
                   <feature.icon className="h-6 w-6 text-zinc-900 dark:text-white" />
                 </div>
                 <h3 className="text-xl font-bold mb-4">{feature.title}</h3>
@@ -117,7 +117,7 @@ export default function LandingPage() {
           >
             <h2 className="text-4xl lg:text-6xl font-black tracking-tight mb-8">Ready to enter your sanctuary?</h2>
             <Link href="/">
-              <Button className="h-16 px-12 rounded-2xl text-sm font-bold uppercase tracking-widest bg-white dark:bg-zinc-900 text-black dark:text-white hover:scale-105 transition-transform">
+              <Button className="h-16 px-12 rounded-xl text-sm font-bold uppercase tracking-widest bg-white dark:bg-zinc-900 text-black dark:text-white hover:scale-105 transition-transform">
                 Open My Vault
               </Button>
             </Link>

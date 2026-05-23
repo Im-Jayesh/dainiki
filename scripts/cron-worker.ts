@@ -50,7 +50,8 @@ cron.schedule("* * * * *", async () => {
           
           await sendOneSignalNotification(
             "Journaling Time",
-            `Hi ${user.username}, it's time to capture your thoughts for today!`
+            `Hi ${user.username}, it's time to capture your thoughts for today!`,
+            [user.username as string]
           );
           
           notifiedThisMinute.add(`${user.username}-${localTimeString}`);

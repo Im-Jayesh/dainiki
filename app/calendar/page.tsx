@@ -143,7 +143,7 @@ export default function CalendarPage() {
                   DayButton: (props) => {
                     const entry = entries.find(e => isSameDay(new Date(e.created_at), props.day.date));
                     return (
-                      <div className="relative flex items-center justify-center h-full w-full group/day">
+                      <div className="relative flex items-center justify-center h-full w-full group/day" title={entry?.mood_name || undefined}>
                         <CalendarDayButton {...props} />
                         {entry?.mood_emoji && (
                           <motion.span 
@@ -154,6 +154,11 @@ export default function CalendarPage() {
                             {entry.mood_emoji}
                           </motion.span>
                         )}
+                        {entry?.mood_name && (
+                           <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover/day:opacity-100 transition-opacity bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 text-[10px] font-bold px-2 py-1 rounded-md pointer-events-none z-50 whitespace-nowrap shadow-xl">
+                             {entry.mood_name}
+                           </div>
+                        )}
                       </div>
                     );
                   }
@@ -163,13 +168,13 @@ export default function CalendarPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-20">
               <Link href="/">
-                <motion.div whileHover={{ y: -3 }} className="p-8 rounded-2xl bg-zinc-100/30 dark:bg-zinc-900/30 border border-zinc-100 dark:border-zinc-800 hover:bg-white dark:hover:bg-zinc-900 transition-all cursor-pointer">
+                <motion.div whileHover={{ y: -3 }} className="p-8 rounded-xl bg-zinc-100/30 dark:bg-zinc-900/30 border border-zinc-100 dark:border-zinc-800 hover:bg-white dark:hover:bg-zinc-900 transition-all cursor-pointer">
                    <p className="text-[9px] font-black uppercase tracking-[0.4em] text-zinc-400 mb-1">Back to</p>
                    <p className="text-xl font-bold">Today's Reflection</p>
                 </motion.div>
               </Link>
               <Link href="/entries">
-                <motion.div whileHover={{ y: -3 }} className="p-8 rounded-2xl bg-zinc-100/30 dark:bg-zinc-900/30 border border-zinc-100 dark:border-zinc-900 hover:bg-white dark:hover:bg-zinc-900 transition-all cursor-pointer text-right">
+                <motion.div whileHover={{ y: -3 }} className="p-8 rounded-xl bg-zinc-100/30 dark:bg-zinc-900/30 border border-zinc-100 dark:border-zinc-900 hover:bg-white dark:hover:bg-zinc-900 transition-all cursor-pointer text-right">
                    <p className="text-[9px] font-black uppercase tracking-[0.4em] text-zinc-400 mb-1">Explore the</p>
                    <p className="text-xl font-bold">Memory Vault</p>
                 </motion.div>

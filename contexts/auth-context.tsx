@@ -9,7 +9,7 @@ interface AuthContextType {
   setIsAuth: (val: boolean) => void;
   isLoading: boolean;
   hasUser: boolean | null;
-  user: { userId: number; username: string; salt: string; credits: number; role: string } | null;
+  user: { userId: number; username: string; salt: string; credits: number; role: string; settings?: string } | null;
   encryptionKey: string | null;
   setEncryptionKey: (key: string | null) => void;
   setCredits: (val: number) => void;
@@ -24,7 +24,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isVerified, setIsVerified] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [hasUser, setHasUser] = useState<boolean | null>(null);
-  const [user, setUser] = useState<{ userId: number; username: string; salt: string; credits: number; role: string } | null>(null);
+  const [user, setUser] = useState<{ userId: number; username: string; salt: string; credits: number; role: string; settings?: string } | null>(null);
   const [encryptionKey, setEncryptionKeyState] = useState<string | null>(null);
 
   // Initialize key from session storage on mount
@@ -59,7 +59,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             username: session.username, 
             salt: data?.salt || "",
             credits: data?.credits ?? 10,
-            role: data?.role || "user"
+            role: data?.role || "user",
+            settings: data?.settings || undefined
           });
           setIsVerified(session.isVerified || false);
         }

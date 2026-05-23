@@ -122,13 +122,13 @@ export default function EntriesPage() {
                     placeholder="Search anything..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-12 h-14 w-80 rounded-[1.25rem] bg-zinc-100/50 dark:bg-zinc-900/50 border-none shadow-inner text-sm"
+                    className="pl-12 h-14 w-80 rounded-xl bg-zinc-100/50 dark:bg-zinc-900/50 border-none shadow-inner text-sm"
                   />
                 </div>
               </motion.div>
             </div>
 
-            <div className="flex gap-2 p-1 bg-zinc-100/50 dark:bg-zinc-900/50 rounded-2xl w-fit">
+            <div className="flex gap-2 p-1 bg-zinc-100/50 dark:bg-zinc-900/50 rounded-xl w-fit">
                <Button variant="ghost" size="sm" className={cn("text-[10px] uppercase font-bold tracking-widest rounded-xl h-10 px-6", view === 'active' && "bg-white dark:bg-zinc-800 shadow-lg")} onClick={() => setView("active")}>Journal</Button>
                <Button variant="ghost" size="sm" className={cn("text-[10px] uppercase font-bold tracking-widest rounded-xl h-10 px-6", view === 'archived' && "bg-white dark:bg-zinc-800 shadow-lg")} onClick={() => setView("archived")}>Archive</Button>
                <Button variant="ghost" size="sm" className={cn("text-[10px] uppercase font-bold tracking-widest rounded-xl h-10 px-6", view === 'deleted' && "bg-white dark:bg-zinc-800 shadow-lg")} onClick={() => setView("deleted")}>Bin</Button>
@@ -137,11 +137,11 @@ export default function EntriesPage() {
             {loading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {[1, 2, 3, 4, 5, 6].map(i => (
-                  <div key={i} className="h-64 rounded-[2.5rem] bg-zinc-100 dark:bg-zinc-900 animate-pulse" />
+                  <div key={i} className="h-64 rounded-xl bg-zinc-100 dark:bg-zinc-900 animate-pulse" />
                 ))}
               </div>
             ) : filteredEntries.length === 0 ? (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="h-64 flex flex-col items-center justify-center border-2 border-dashed border-zinc-100 dark:border-zinc-900 rounded-[2.5rem] text-zinc-400">
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="h-64 flex flex-col items-center justify-center border-2 border-dashed border-zinc-100 dark:border-zinc-900 rounded-xl text-zinc-400">
                 <Database className="h-8 w-8 mb-4 opacity-20" />
                 <p className="text-sm font-bold uppercase tracking-widest opacity-50">No matching reflections found</p>
               </motion.div>
@@ -157,7 +157,7 @@ export default function EntriesPage() {
                       exit={{ opacity: 0, scale: 0.9 }}
                       transition={{ delay: index * 0.05, type: "spring", bounce: 0.3 }}
                       onClick={() => router.push(`/?id=${entry.id}&view=${view}`)}
-                      className="group cursor-pointer bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 p-8 rounded-[2.5rem] hover:shadow-xl transition-all duration-500 flex flex-col h-72 relative overflow-hidden"
+                      className="group cursor-pointer bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 p-8 rounded-xl hover:shadow-xl transition-all duration-500 flex flex-col h-72 relative overflow-hidden"
                     >
                       <div className="flex items-center justify-between mb-6">
                         <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">

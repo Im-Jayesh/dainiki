@@ -157,7 +157,7 @@ export function SetupForm({ onSwitchToLogin, initialStep = 1, initialUsername = 
           </form>
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
-           <div className="p-4 bg-zinc-50 dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 w-full text-left space-y-3">
+           <div className="p-4 bg-zinc-50 dark:bg-zinc-900 rounded-xl border border-zinc-100 dark:border-zinc-800 w-full text-left space-y-3">
             <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-zinc-400">
               <Key className="h-3 w-3" /> Save Recovery Key
             </div>
