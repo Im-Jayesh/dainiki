@@ -27,7 +27,7 @@ interface Message {
 }
 
 export default function ChatPage() {
-  const { user, encryptionKey, isAuth } = useAuth();
+  const { user, encryptionKey, isAuth, setCredits } = useAuth();
   const { appearance } = useSettings();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -104,6 +104,14 @@ export default function ChatPage() {
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
     
+    const { deductAiCredit } = await import("@/lib/actions/auth");
+    const creditRes = await deductAiCredit();
+    if (!creditRes.success) {
+      setMessages(prev => [...prev, { role: "ai", content: creditRes.error || "No credits remaining for today." }]);
+      return;
+    }
+    if (setCredits && creditRes.remaining !== undefined) setCredits(creditRes.remaining);
+
     const userMsg = input.trim();
     setInput("");
     setMessages(prev => [...prev, { role: "user", content: userMsg }]);

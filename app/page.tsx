@@ -313,9 +313,17 @@ export default function JournalPage() {
 
   const handleApplyAi = () => {
     if (aiSuggestion) {
-      setContent(aiSuggestion);
+      // Ensure large content is properly formatted with paragraphs if missing
+      let formattedSuggestion = aiSuggestion;
+      if (!formattedSuggestion.includes('<p>') && formattedSuggestion.includes('\n')) {
+        formattedSuggestion = formattedSuggestion.split('\n').map(p => `<p>${p}</p>`).join('');
+      }
+      
+      setContent(formattedSuggestion);
       setAiSuggestion(null);
-      handleAutoSave();
+      
+      // Force an immediate auto-save for large content updates
+      setTimeout(() => handleAutoSave(), 100);
     }
   };
 
