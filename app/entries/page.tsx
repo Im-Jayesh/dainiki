@@ -3,16 +3,19 @@
 import { useAuth } from "@/contexts/auth-context";
 import { useSettings } from "@/contexts/settings-context";
 import { useState, useEffect, useMemo } from "react";
-import { getAllEntries } from "@/lib/actions/journal";
-import { Search, ChevronRight, Hash, Database } from "lucide-react";
+import { getAllEntries, fetchMoods } from "@/lib/actions/journal";
+import { Search, ChevronRight, Database, Smile, Calendar as CalendarIcon, X, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { format } from "date-fns";
+import { format, isSameDay } from "date-fns";
 import { decrypt } from "@/lib/crypto";
 import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Sidebar } from "@/components/sidebar";
 import { motion, AnimatePresence } from "framer-motion";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 
 interface Entry {
   id: number;
@@ -24,6 +27,12 @@ interface Entry {
   created_at: string;
   is_deleted?: boolean;
   is_archived?: boolean;
+}
+
+interface Mood {
+  id: number;
+  name: string;
+  emoji: string;
 }
 
 const THEME_STYLES: Record<string, string> = {
@@ -40,7 +49,11 @@ export default function EntriesPage() {
   const searchParams = useSearchParams();
   
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [moods, setMoods] = useState<Mood[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedMoodId, setSelectedMoodId] = useState<number | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"active" | "archived" | "deleted">("active");
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -49,8 +62,21 @@ export default function EntriesPage() {
     const v = searchParams.get("view");
     if (v === "archived" || v === "deleted") setView(v);
     const dateParam = searchParams.get("date");
-    if (dateParam) setSearchQuery(dateParam);
+    if (dateParam) {
+      try {
+        const d = new Date(dateParam);
+        if (!isNaN(d.getTime())) setSelectedDate(d);
+      } catch (e) {}
+    }
   }, [searchParams]);
+
+  useEffect(() => {
+    const loadMoods = async () => {
+      const data = await fetchMoods();
+      setMoods(data as Mood[]);
+    };
+    loadMoods();
+  }, []);
 
   useEffect(() => {
     const loadEntries = async () => {
@@ -80,16 +106,35 @@ export default function EntriesPage() {
   const filteredEntries = useMemo(() => {
     const lowerQuery = searchQuery.toLowerCase();
     return entries.filter(e => {
+      // 1. Text Search Filter
       const dateFull = format(new Date(e.created_at), 'yyyy-MM-dd');
       const datePretty = format(new Date(e.created_at), 'PPP').toLowerCase();
       const moodStr = (e.mood_name || "").toLowerCase();
-      return (e.title || "").toLowerCase().includes(lowerQuery) || 
+      const matchesSearch = (e.title || "").toLowerCase().includes(lowerQuery) || 
              (e.content || "").toLowerCase().includes(lowerQuery) ||
              datePretty.includes(lowerQuery) ||
              dateFull.includes(lowerQuery) ||
              moodStr.includes(lowerQuery);
+      
+      if (!matchesSearch) return false;
+
+      // 2. Mood Filter
+      if (selectedMoodId !== null && e.mood_id !== selectedMoodId) return false;
+
+      // 3. Date Filter
+      if (selectedDate && !isSameDay(new Date(e.created_at), selectedDate)) return false;
+
+      return true;
     });
-  }, [entries, searchQuery]);
+  }, [entries, searchQuery, selectedMoodId, selectedDate]);
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setSelectedMoodId(null);
+    setSelectedDate(undefined);
+  };
+
+  const selectedMood = moods.find(m => m.id === selectedMoodId);
 
   return (
     <div 
@@ -115,23 +160,96 @@ export default function EntriesPage() {
                 </p>
               </motion.div>
 
-              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-3">
-                <div className="relative group">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400 transition-colors" />
-                  <Input
-                    placeholder="Search anything..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-12 h-14 w-80 rounded-xl bg-zinc-100/50 dark:bg-zinc-900/50 border-none shadow-inner text-sm"
-                  />
+              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="flex flex-col gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="relative group">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400 transition-colors" />
+                    <Input
+                      placeholder="Search anything..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-12 h-14 w-80 rounded-xl bg-zinc-100/50 dark:bg-zinc-900/50 border-none shadow-inner text-sm"
+                    />
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    {/* Mood Filter */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger className={cn("inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950 disabled:pointer-events-none disabled:opacity-50 border border-zinc-200 bg-white shadow-sm hover:bg-zinc-100 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-800 dark:hover:text-zinc-50 h-14 w-14 rounded-xl border-none bg-zinc-100/50 dark:bg-zinc-900/50 shadow-inner", selectedMoodId && "text-amber-500")}>
+                        {selectedMood ? <span className="text-xl">{selectedMood.emoji}</span> : <Smile className="h-5 w-5" />}
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="w-56 p-2 rounded-xl border-zinc-100 dark:border-zinc-800 shadow-2xl">
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 px-3 py-2">Filter by Mood</div>
+                        <DropdownMenuSeparator className="bg-zinc-50 dark:bg-zinc-800/50" />
+                        <DropdownMenuItem onClick={() => setSelectedMoodId(null)} className="rounded-lg h-10 px-3">
+                          <Filter className="h-3.5 w-3.5 mr-2 opacity-50" /> All Moods
+                        </DropdownMenuItem>
+                        {moods.map((m) => (
+                          <DropdownMenuItem key={m.id} onClick={() => setSelectedMoodId(m.id)} className="rounded-lg h-10 px-3">
+                            <span className="mr-3 text-lg">{m.emoji}</span> {m.name}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    {/* Date Filter */}
+                    <Popover>
+                      <PopoverTrigger className={cn("inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950 disabled:pointer-events-none disabled:opacity-50 border border-zinc-200 bg-white shadow-sm hover:bg-zinc-100 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-800 dark:hover:text-zinc-50 h-14 w-14 rounded-xl border-none bg-zinc-100/50 dark:bg-zinc-900/50 shadow-inner", selectedDate && "text-blue-500")}>
+                        <CalendarIcon className="h-5 w-5" />
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 rounded-2xl border-none shadow-2xl overflow-hidden" align="end">
+                        <Calendar
+                          mode="single"
+                          selected={selectedDate}
+                          onSelect={setSelectedDate}
+                          initialFocus
+                          className="bg-white dark:bg-zinc-950 p-4"
+                        />
+                        {selectedDate && (
+                           <div className="p-3 bg-zinc-50 dark:bg-zinc-900 border-t border-zinc-100 dark:border-zinc-800">
+                             <Button variant="ghost" className="w-full h-10 rounded-xl text-[10px] font-bold uppercase tracking-widest" onClick={() => setSelectedDate(undefined)}>
+                               Clear Date
+                             </Button>
+                           </div>
+                        )}
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                 </div>
+
+                <AnimatePresence>
+                  {(selectedMoodId || selectedDate || searchQuery) && (
+                    <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="flex flex-wrap gap-2 items-center">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mr-2">Filters:</span>
+                      {searchQuery && (
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-900 rounded-full text-[10px] font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400">
+                          Query: {searchQuery}
+                          <X className="h-3 w-3 cursor-pointer hover:text-red-500" onClick={() => setSearchQuery("")} />
+                        </div>
+                      )}
+                      {selectedMoodId && (
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/30 rounded-full text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-900/30">
+                          Mood: {selectedMood?.emoji} {selectedMood?.name}
+                          <X className="h-3 w-3 cursor-pointer hover:text-red-500" onClick={() => setSelectedMoodId(null)} />
+                        </div>
+                      )}
+                      {selectedDate && (
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-950/30 rounded-full text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30">
+                          Date: {format(selectedDate, 'MMM d, yyyy')}
+                          <X className="h-3 w-3 cursor-pointer hover:text-red-500" onClick={() => setSelectedDate(undefined)} />
+                        </div>
+                      )}
+                      <Button variant="link" onClick={clearFilters} className="h-auto p-0 text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-red-500 transition-colors ml-2">Clear All</Button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </motion.div>
             </div>
 
             <div className="flex gap-2 p-1 bg-zinc-100/50 dark:bg-zinc-900/50 rounded-xl w-fit">
-               <Button variant="ghost" size="sm" className={cn("text-[10px] uppercase font-bold tracking-widest rounded-xl h-10 px-6", view === 'active' && "bg-white dark:bg-zinc-800 shadow-lg")} onClick={() => setView("active")}>Journal</Button>
-               <Button variant="ghost" size="sm" className={cn("text-[10px] uppercase font-bold tracking-widest rounded-xl h-10 px-6", view === 'archived' && "bg-white dark:bg-zinc-800 shadow-lg")} onClick={() => setView("archived")}>Archive</Button>
-               <Button variant="ghost" size="sm" className={cn("text-[10px] uppercase font-bold tracking-widest rounded-xl h-10 px-6", view === 'deleted' && "bg-white dark:bg-zinc-800 shadow-lg")} onClick={() => setView("deleted")}>Bin</Button>
+               <Button variant="ghost" size="sm" className={cn("text-[10px] uppercase font-bold tracking-widest rounded-xl h-10 px-6", view === 'active' && "bg-white dark:bg-zinc-800 shadow-lg")} onClick={() => { setView("active"); clearFilters(); }}>Journal</Button>
+               <Button variant="ghost" size="sm" className={cn("text-[10px] uppercase font-bold tracking-widest rounded-xl h-10 px-6", view === 'archived' && "bg-white dark:bg-zinc-800 shadow-lg")} onClick={() => { setView("archived"); clearFilters(); }}>Archive</Button>
+               <Button variant="ghost" size="sm" className={cn("text-[10px] uppercase font-bold tracking-widest rounded-xl h-10 px-6", view === 'deleted' && "bg-white dark:bg-zinc-800 shadow-lg")} onClick={() => { setView("deleted"); clearFilters(); }}>Bin</Button>
             </div>
 
             {loading ? (
@@ -180,3 +298,4 @@ export default function EntriesPage() {
     </div>
   );
 }
+
