@@ -8,6 +8,7 @@ export const metadata: Metadata = {
     title: "Dainiki | Your Private Sanctuary",
     description: "The most aesthetic and secure way to preserve your inner voice.",
     type: "website",
+    images: ["/link-image.png"],
   }
 };
 

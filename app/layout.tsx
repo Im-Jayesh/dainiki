@@ -37,6 +37,12 @@ const dancing = Dancing_Script({
 export const metadata: Metadata = {
   title: "Dainiki | Aesthetic Personal Journal",
   description: "A clean, private, and aesthetic space for your thoughts.",
+  icons: {
+    icon: "/dainiki-logo.jpg",
+  },
+  openGraph: {
+    images: ["/link-image.png"],
+  },
 };
 
 export default function RootLayout({
