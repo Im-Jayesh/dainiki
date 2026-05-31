@@ -7,7 +7,7 @@ import { Sidebar } from "@/components/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { cn } from "@/lib/utils";
+import { cn, formatMarkdown } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Send, Bot, User as UserIcon, RefreshCw, ChevronRight } from "lucide-react";
 import { encrypt, decrypt } from "@/lib/crypto";
@@ -78,10 +78,10 @@ export default function ChatPage() {
       }).join("\n\n---\n\n");
       
       const prompt = `Analyze the following 10 journal entries and their associated moods. 
-      Create a deeply insightful personality profile and emotional trajectory for this user. 
-      Specifically look for recurring themes, signs of emotional distress (like depression, anxiety, or burnout), and what brings them joy.
-      Address it as a background summary for a supportive AI companion. 
-      Keep it under 300 words.
+      Create a simple, grounded summary of the user's current mindset and emotional state. 
+      Look for recurring themes, what's bothering them, and what's making them happy. 
+      This is a background summary for a supportive AI friend to help them understand the user better.
+      Keep it brief and use natural, direct language. Under 200 words.
       
       Entries:\n${combinedText}`;
 
@@ -226,9 +226,9 @@ export default function ChatPage() {
                   </div>
                   <div className={cn(
                     "p-4 rounded-xl text-sm leading-relaxed",
-                    msg.role === "user" ? "bg-zinc-100 dark:bg-zinc-900" : "bg-white dark:bg-zinc-950 border border-zinc-100 dark:border-zinc-800 shadow-sm"
+                    msg.role === "user" ? "bg-zinc-100 dark:bg-zinc-900" : "bg-white dark:bg-zinc-950 border border-zinc-100 dark:border-zinc-800 shadow-sm prose prose-zinc dark:prose-invert prose-sm max-w-none"
                   )}>
-                     <div dangerouslySetInnerHTML={{ __html: msg.content.replace(/\n/g, '<br/>') }} />
+                     <div dangerouslySetInnerHTML={{ __html: msg.role === "ai" ? formatMarkdown(msg.content) : msg.content.replace(/\n/g, '<br/>') }} />
                   </div>
                 </motion.div>
               ))}

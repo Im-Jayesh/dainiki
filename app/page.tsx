@@ -13,7 +13,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { format } from "date-fns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
+import { cn, formatMarkdown } from "@/lib/utils";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AiLoading } from "@/components/ai-loading";
 import { encrypt, decrypt } from "@/lib/crypto";
@@ -269,8 +269,8 @@ export default function JournalPage() {
     
     try {
       const prompt = type === "summarize" 
-        ? `Summarize this journal entry in 2-3 sentences. Be profound and reflective: ${content.replace(/<[^>]*>?/gm, '')}`
-        : `Rewrite this journal entry to be more polished, well-formatted, and emotionally resonant. Use Markdown for structure (paragraphs, lists). Keep the personal tone: ${content.replace(/<[^>]*>?/gm, '')}`;
+        ? `Summarize this journal entry in 2-3 sentences. Be practical and grounded: ${content.replace(/<[^>]*>?/gm, '')}`
+        : `Rewrite this journal entry to be more polished and emotionally resonant, but keep my original tone. Use Markdown for structure (paragraphs, bold, lists). Entry: ${content.replace(/<[^>]*>?/gm, '')}`;
       
       const response = await fetch("/api/ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt }) });
       if (!response.ok) throw new Error(await response.text() || "AI failed to respond");
@@ -287,11 +287,6 @@ export default function JournalPage() {
         fullResponse += chunk;
         if (type === "summarize") setAiSummary(prev => (prev || "") + chunk);
         else setAiSuggestion(prev => (prev || "") + chunk);
-      }
-      
-      if (type === "format") {
-        const html = fullResponse.split('\n\n').map(p => `<p>${p}</p>`).join('');
-        setAiSuggestion(html);
       }
     } catch (err: any) {
       setAiError(err.message || "AI failed to respond");
@@ -490,13 +485,11 @@ export default function JournalPage() {
                 </Button>
               </div>
               <ScrollArea className="max-h-[60vh] p-6">
-                <div className="prose prose-zinc dark:prose-invert prose-sm">
+                <div className="prose prose-zinc dark:prose-invert prose-sm max-w-none">
                   {aiSummary !== null ? (
-                    <p className="text-base leading-relaxed italic text-zinc-600 dark:text-zinc-400 font-serif">
-                      {aiSummary || "Dainiki is contemplating your entry..."}
-                    </p>
+                    <div className="text-base leading-relaxed italic text-zinc-600 dark:text-zinc-400 font-serif" dangerouslySetInnerHTML={{ __html: formatMarkdown(aiSummary) || "Dainiki is contemplating your entry..." }} />
                   ) : (
-                    <div className="leading-relaxed text-zinc-700 dark:text-zinc-300" dangerouslySetInnerHTML={{ __html: aiSuggestion || "Dainiki is weaving your thoughts..." }} />
+                    <div className="leading-relaxed text-zinc-700 dark:text-zinc-300" dangerouslySetInnerHTML={{ __html: formatMarkdown(aiSuggestion || "") || "Dainiki is weaving your thoughts..." }} />
                   )}
                 </div>
               </ScrollArea>
