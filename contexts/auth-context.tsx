@@ -15,6 +15,9 @@ interface AuthContextType {
   setCredits: (val: number) => void;
   refreshStatus: () => Promise<void>;
   logout: () => Promise<void>;
+  isLocked: boolean;
+  lock: () => void;
+  unlock: (key: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,17 +29,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [hasUser, setHasUser] = useState<boolean | null>(null);
   const [user, setUser] = useState<{ userId: number; username: string; salt: string; credits: number; role: string; settings?: string } | null>(null);
   const [encryptionKey, setEncryptionKeyState] = useState<string | null>(null);
+  const [isLocked, setIsLocked] = useState(false);
 
   // Initialize key from session storage on mount
   useEffect(() => {
     const savedKey = sessionStorage.getItem("dainiki_vault_key");
-    if (savedKey) setEncryptionKeyState(savedKey);
+    if (savedKey) {
+      setEncryptionKeyState(savedKey);
+      setIsLocked(false);
+    } else if (isAuth && isVerified) {
+      setIsLocked(true);
+    }
+  }, [isAuth, isVerified]);
+
+  const lock = useCallback(() => {
+    sessionStorage.removeItem("dainiki_vault_key");
+    setEncryptionKeyState(null);
+    setIsLocked(true);
+  }, []);
+
+  const unlock = useCallback((key: string) => {
+    sessionStorage.setItem("dainiki_vault_key", key);
+    setEncryptionKeyState(key);
+    setIsLocked(false);
   }, []);
 
   const setEncryptionKey = (key: string | null) => {
-    setEncryptionKeyState(key);
-    if (key) sessionStorage.setItem("dainiki_vault_key", key);
-    else sessionStorage.removeItem("dainiki_vault_key");
+    if (key) unlock(key);
+    else lock();
   };
   
   const setCredits = (val: number) => {
@@ -99,7 +119,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setEncryptionKey, 
       setCredits,
       refreshStatus, 
-      logout 
+      logout,
+      isLocked,
+      lock,
+      unlock
     }}>
       {children}
     </AuthContext.Provider>

@@ -57,10 +57,30 @@ export async function getUserByUsername(username: string) {
   return { ...result.rows[0] } as any;
 }
 
+export async function getUserByEmail(email: string) {
+  const result = await db.execute({
+    sql: "SELECT * FROM users WHERE email = ?",
+    args: [email]
+  });
+
+  if (!result.rows[0]) return null;
+  return { ...result.rows[0] } as any;
+}
+
 export async function userExists(username: string) {
   const result = await db.execute({
     sql: "SELECT COUNT(*) as count FROM users WHERE username = ?",
     args: [username]
+  });
+
+  const count = Number((result.rows[0] as any).count);
+  return count > 0;
+}
+
+export async function emailExists(email: string) {
+  const result = await db.execute({
+    sql: "SELECT COUNT(*) as count FROM users WHERE email = ?",
+    args: [email]
   });
 
   const count = Number((result.rows[0] as any).count);
@@ -96,5 +116,13 @@ export async function updatePassword(username: string, newPassword: string) {
   return await db.execute({
     sql: "UPDATE users SET password_hash = ? WHERE username = ?",
     args: [passwordHash, username]
+  });
+}
+
+export async function updatePin(username: string, newPin: string) {
+  const pinHash = bcrypt.hashSync(newPin, 10);
+  return await db.execute({
+    sql: "UPDATE users SET pin_hash = ? WHERE username = ?",
+    args: [pinHash, username]
   });
 }

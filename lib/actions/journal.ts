@@ -68,3 +68,9 @@ export async function search(query: string, view: "active" | "archived" | "delet
   if (!session) return [];
   return searchEntries(query, session.userId, { view });
 }
+
+export async function exportAllEntries() {
+  const session = await getSession();
+  if (!session) throw new Error("Unauthorized");
+  return getEntries(session.userId, { view: "active" }); // This helper already handles basic fetching
+}

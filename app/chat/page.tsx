@@ -72,9 +72,18 @@ export default function ChatPage() {
         }
       }));
 
-      const combinedText = decryptedEntries.join("\n\n").replace(/<[^>]*>?/gm, '').substring(0, 10000);
+      const combinedText = decryptedEntries.map((content, i) => {
+        const entry = data[i];
+        return `Date: ${entry.created_at}, Mood: ${entry.mood_name || 'Unknown'}\nContent: ${content.replace(/<[^>]*>?/gm, '').substring(0, 1000)}`;
+      }).join("\n\n---\n\n");
       
-      const prompt = `Based on the following journal entries, write a concise personality profile and emotional state of this user. Focus on their values, recurring themes, and emotional needs. Address it as a summary for an AI companion. Keep it under 200 words.\n\nEntries:\n${combinedText}`;
+      const prompt = `Analyze the following 10 journal entries and their associated moods. 
+      Create a deeply insightful personality profile and emotional trajectory for this user. 
+      Specifically look for recurring themes, signs of emotional distress (like depression, anxiety, or burnout), and what brings them joy.
+      Address it as a background summary for a supportive AI companion. 
+      Keep it under 300 words.
+      
+      Entries:\n${combinedText}`;
 
       const response = await fetch("/api/ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt, feature: "profile_generation" }) });
       if (!response.ok) throw new Error("Failed to generate profile");
@@ -227,12 +236,13 @@ export default function ChatPage() {
           </div>
 
           <div className="relative shrink-0">
-            <Input 
+            <input 
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
               placeholder="Share your thoughts..."
-              className="w-full h-14 pl-6 pr-14 rounded-xl bg-zinc-100/50 dark:bg-zinc-900/50 border-none shadow-inner text-sm focus-visible:ring-1 focus-visible:ring-zinc-300"
+              autoFocus
+              className="w-full h-14 pl-6 pr-14 rounded-xl bg-zinc-100/50 dark:bg-zinc-900/50 border-none shadow-inner text-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-300"
             />
             <Button 
               size="icon" 

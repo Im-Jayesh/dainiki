@@ -18,7 +18,12 @@ import {
   Trash2,
   Archive,
   Bell,
-  Bot
+  Bot,
+  Download,
+  Lock,
+  ShieldCheck,
+  ShieldAlert,
+  Key
 } from "lucide-react";
 import { motion } from "framer-motion";
 import Link from "next/link";
@@ -35,6 +40,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
+import { SecuritySettings } from "./auth/security-settings";
 
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -52,7 +58,7 @@ const FONT_FAMILIES = {
 };
 
 export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => void }) {
-  const { user, logout } = useAuth();
+  const { user, logout, encryptionKey, lock } = useAuth();
   const { theme: systemTheme, setTheme } = useTheme();
   const { appearance, setAppearance, reminders, setReminders } = useSettings();
   const pathname = usePathname();
@@ -62,7 +68,7 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
     <motion.aside
       initial={false}
       animate={{ width: open ? 280 : 0, opacity: open ? 1 : 0 }}
-      className="border-r border-zinc-100 dark:border-zinc-900 bg-white/50 dark:bg-black/50 backdrop-blur-xl flex flex-col overflow-hidden shrink-0 z-40 relative group/sidebar"
+      className="h-full border-r border-zinc-100 dark:border-zinc-900 bg-white/50 dark:bg-black/50 backdrop-blur-xl flex flex-col overflow-hidden shrink-0 z-40 relative group/sidebar"
     >
       <div className="p-6 flex items-center justify-between">
         <motion.h1 
@@ -77,7 +83,7 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
       </div>
 
       <ScrollArea className="flex-1 px-4">
-        <div className="space-y-6 pt-2">
+        <div className="space-y-6 pt-2 pb-8">
           <div>
             <p className="px-3 mb-3 text-[10px] font-bold uppercase tracking-widest text-zinc-400 opacity-50">Navigation</p>
             <div className="space-y-1">
@@ -115,7 +121,7 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
                 <Button 
                   variant="ghost" 
                   className="w-full justify-start text-sm font-medium h-11 px-3 rounded-xl text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
-                  onClick={() => router.push("/entries?view=active")}
+                  onClick={() => router.push("/entries")}
                 >
                   <LayoutDashboard className="mr-3 h-4 w-4 text-zinc-400" />
                   Journal
@@ -144,6 +150,20 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
           <div>
              <p className="px-3 mb-3 text-[10px] font-bold uppercase tracking-widest text-zinc-400 opacity-50">Settings</p>
              <div className="space-y-1">
+                <Dialog>
+                  <DialogTrigger className={cn(buttonVariants({ variant: "ghost" }), "w-full justify-start text-sm font-medium h-11 px-3 rounded-xl text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900")}>
+                    <ShieldCheck className="mr-3 h-4 w-4 text-zinc-400" />
+                    Vault Security
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[425px] rounded-xl border-zinc-100 dark:border-zinc-900 shadow-2xl overflow-y-auto max-h-[90vh]">
+                    <DialogHeader>
+                      <DialogTitle className="text-xl font-bold tracking-tight">Vault Security</DialogTitle>
+                      <DialogDescription className="text-xs uppercase tracking-widest font-bold text-zinc-400">Manage your credentials and encryption</DialogDescription>
+                    </DialogHeader>
+                    <SecuritySettings />
+                  </DialogContent>
+                </Dialog>
+
                 <Dialog>
                   <DialogTrigger className={cn(buttonVariants({ variant: "ghost" }), "w-full justify-start text-sm font-medium h-11 px-3 rounded-xl text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900")}>
                     <Settings className="mr-3 h-4 w-4 text-zinc-400" />
@@ -252,10 +272,50 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
                 <Button 
                   variant="ghost" 
                   className="w-full justify-start text-sm font-medium h-11 px-3 rounded-xl text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                  onClick={async () => {
+                    const { exportAllEntries } = await import("@/lib/actions/journal");
+                    const { decrypt } = await import("@/lib/crypto");
+                    const entries = await exportAllEntries();
+                    const decrypted = await Promise.all(entries.map(async (e: any) => {
+                      try {
+                        const key = encryptionKey || sessionStorage.getItem("dainiki_vault_key");
+                        if (!key) throw new Error("Key missing");
+                        const title = await decrypt(e.title, key, user!.salt);
+                        const content = await decrypt(e.content, key, user!.salt);
+                        return { ...e, title, content };
+                      } catch {
+                        return { ...e, title: "[Decryption Failed]", content: "" };
+                      }
+                    }));
+                    const blob = new Blob([JSON.stringify(decrypted, null, 2)], { type: "application/json" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `dainiki-backup-${new Date().toISOString().split('T')[0]}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                >
+                  <Download className="mr-3 h-4 w-4 text-zinc-400" />
+                  Backup Vault
+                </Button>
+
+                <Button 
+                  variant="ghost" 
+                  className="w-full justify-start text-sm font-medium h-11 px-3 rounded-xl text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                  onClick={lock}
+                >
+                  <Lock className="mr-3 h-4 w-4 text-zinc-400" />
+                  Lock Vault
+                </Button>
+
+                <Button 
+                  variant="ghost" 
+                  className="w-full justify-start text-sm font-medium h-11 px-3 rounded-xl text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
                   onClick={logout}
                 >
                   <LogOut className="mr-3 h-4 w-4 text-zinc-400" />
-                  Lock Vault
+                  Logout
                 </Button>
              </div>
           </div>
@@ -263,14 +323,14 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
       </ScrollArea>
       
       {user && (
-        <div className="p-4 mt-auto">
-          <div className="bg-zinc-100 dark:bg-zinc-900 rounded-xl p-4 border border-zinc-200 dark:border-zinc-800 flex items-center gap-3">
-             <div className="h-10 w-10 rounded-full bg-gradient-to-br from-amber-500 to-rose-500 flex items-center justify-center text-white font-bold text-sm">
+        <div className="p-4 mt-auto border-t border-zinc-100 dark:border-zinc-900 bg-white/50 dark:bg-black/50">
+          <div className="bg-zinc-100 dark:bg-zinc-900 rounded-xl p-3 border border-zinc-200 dark:border-zinc-800 flex items-center gap-3">
+             <div className="h-8 w-8 rounded-full bg-gradient-to-br from-amber-500 to-rose-500 flex items-center justify-center text-white font-bold text-xs shrink-0">
                {user.username[0].toUpperCase()}
              </div>
              <div className="flex-1 overflow-hidden text-left">
-               <p className="text-xs font-bold truncate text-zinc-900 dark:text-zinc-100">{user.username}</p>
-               <p className="text-[9px] font-bold uppercase tracking-wider text-amber-500">{user.credits} AI Credits</p>
+               <p className="text-[11px] font-bold truncate text-zinc-900 dark:text-zinc-100 leading-tight">{user.username}</p>
+               <p className="text-[9px] font-bold uppercase tracking-wider text-amber-500 leading-tight">{user.credits} AI Credits</p>
              </div>
           </div>
         </div>

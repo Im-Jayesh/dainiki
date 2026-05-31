@@ -15,9 +15,8 @@ import { Loader2, Lock } from "lucide-react";
 import { decrypt } from "@/lib/crypto";
 
 export function SecurityGate({ children }: { children: React.ReactNode }) {
-  const { isAuth, isVerified, isLoading, user, setEncryptionKey } = useAuth();
+  const { isAuth, isVerified, isLoading, user, setEncryptionKey, isLocked, lock } = useAuth();
   const [view, setView] = useState<"login" | "register" | "recovery" | "verify">("login");
-  const [isLocked, setIsLocked] = useState(false);
 
   // Lock Screen States
   const [unlockPassword, setUnlockPassword] = useState("");
@@ -28,7 +27,7 @@ export function SecurityGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden" && isAuth && isVerified) {
-        setIsLocked(true);
+        lock();
       }
     };
 
@@ -39,7 +38,7 @@ export function SecurityGate({ children }: { children: React.ReactNode }) {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("blur", handleVisibilityChange);
     };
-  }, [isAuth, isVerified]);
+  }, [isAuth, isVerified, lock]);
 
   const handleUnlockWithPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,7 +56,6 @@ export function SecurityGate({ children }: { children: React.ReactNode }) {
         } else {
           setEncryptionKey(unlockPassword);
         }
-        setIsLocked(false);
         setUnlockPassword("");
       } else {
         setUnlockError("Incorrect password");
@@ -89,7 +87,6 @@ export function SecurityGate({ children }: { children: React.ReactNode }) {
         } else {
           setEncryptionKey(unlockPin);
         }
-        setIsLocked(false);
         setUnlockPin("");
       } else {
         setUnlockError("Incorrect PIN");

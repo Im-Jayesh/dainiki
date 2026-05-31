@@ -59,6 +59,13 @@ export function Editor({ content, onChange, onSave }: EditorProps) {
     },
   });
 
+  // Sync content from prop if it changes externally
+  useEffect(() => {
+    if (editor && content !== editor.getHTML()) {
+      editor.commands.setContent(content);
+    }
+  }, [content, editor]);
+
   // Handle auto-saving or manual save triggers
   useEffect(() => {
     const timer = setTimeout(() => {

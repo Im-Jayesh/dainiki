@@ -15,7 +15,7 @@ const setupSchema = z.object({
   email: z.string().email("Invalid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   confirmPassword: z.string(),
-  pin: z.string().regex(/^\d{0,6}$/, "PIN must be up to 6 digits").optional(),
+  pin: z.string().length(6, "PIN must be exactly 6 digits"),
   secretQuestion: z.string().optional(),
   secretAnswer: z.string().optional()
 }).refine((data) => data.password === data.confirmPassword, {
@@ -222,11 +222,12 @@ export function SetupForm({ onSwitchToLogin, initialStep = 1, initialUsername = 
             </div>
             <Input
               type="text"
-              placeholder="PIN (6 digits, optional)"
+              placeholder="PIN (6 digits, required)"
               value={formData.pin}
               onChange={(e) => setFormData({ ...formData, pin: e.target.value })}
               className="bg-zinc-50 dark:bg-zinc-800/50"
               maxLength={6}
+              required
             />
             <div className="space-y-4 pt-2">
               <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Recovery Question</p>

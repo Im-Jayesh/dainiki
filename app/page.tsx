@@ -311,19 +311,35 @@ export default function JournalPage() {
     loadEntries();
   };
 
-  const handleApplyAi = () => {
+  const handleApplyAi = async () => {
     if (aiSuggestion) {
-      // Ensure large content is properly formatted with paragraphs if missing
+      // 1. Format the content properly
       let formattedSuggestion = aiSuggestion;
       if (!formattedSuggestion.includes('<p>') && formattedSuggestion.includes('\n')) {
         formattedSuggestion = formattedSuggestion.split('\n').map(p => `<p>${p}</p>`).join('');
       }
       
+      // 2. Update local state immediately
       setContent(formattedSuggestion);
       setAiSuggestion(null);
+
+      // 3. Immediately update the entry in the list to reflect changes in UI
+      if (selectedId) {
+        setEntries(prev => prev.map(e => e.id === selectedId ? { ...e, content: formattedSuggestion } : e));
+      }
+
+      // 4. Force an immediate save to database
+      const { saveEntry: saveAction } = await import("@/lib/actions/journal");
+      const { encrypt: encAction } = await import("@/lib/crypto");
+      const eTitle = await encAction(title, encryptionKey!, user!.salt);
+      const eContent = await encAction(formattedSuggestion, encryptionKey!, user!.salt);
       
-      // Force an immediate auto-save for large content updates
-      setTimeout(() => handleAutoSave(), 100);
+      await saveAction({
+        id: selectedId || undefined,
+        title: eTitle,
+        content: eContent,
+        mood_id: moodId || undefined
+      });
     }
   };
 

@@ -37,6 +37,11 @@ export function LoginForm({ onForgotPassword, onRegister }: { onForgotPassword: 
       const { username: validUsername, password: validPassword } = passwordLoginSchema.parse({ username, password });
       const res = await login(validUsername, validPassword);
       if (res.success) {
+        if (res.unverified) {
+          await refreshStatus();
+          return;
+        }
+
         // Fetch E2EE metadata
         const userData = await getUserData(validUsername);
         if (userData && userData.master_key_password && userData.salt) {
@@ -76,6 +81,11 @@ export function LoginForm({ onForgotPassword, onRegister }: { onForgotPassword: 
       const { username: validUsername, pin: validPin } = pinLoginSchema.parse({ username, pin });
       const res = await loginWithPin(validUsername, validPin);
       if (res.success) {
+        if (res.unverified) {
+          await refreshStatus();
+          return;
+        }
+
         // Fetch E2EE metadata
         const userData = await getUserData(validUsername);
         if (userData && userData.master_key_pin && userData.salt) {
