@@ -369,19 +369,19 @@ export default function JournalPage() {
 
       <main className="flex-1 flex flex-col relative bg-white dark:bg-black transition-colors duration-500 min-w-0">
         {!sidebarOpen && (
-          <Button variant="ghost" size="icon" className="absolute left-6 top-6 z-10 h-10 w-10 text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-950 rounded-xl shadow-sm border border-zinc-100 dark:border-zinc-900" onClick={() => setSidebarOpen(true)}>
+          <Button variant="ghost" size="icon" className="absolute left-4 top-4 lg:left-6 lg:top-6 z-10 h-10 w-10 text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-950 rounded-xl shadow-sm border border-zinc-100 dark:border-zinc-900" onClick={() => setSidebarOpen(true)}>
             <ChevronRight className="h-4 w-4" />
           </Button>
         )}
 
-        <div className="absolute right-6 top-6 z-10 flex flex-col items-end gap-2">
+        <div className="absolute right-4 top-4 lg:right-6 lg:top-6 z-10 flex flex-col items-end gap-2">
           <div className="flex items-center gap-2">
-            <Button onClick={handleNewEntry} variant="outline" size="sm" className="h-10 px-4 text-xs font-medium text-zinc-900 dark:text-zinc-100 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-black/50 backdrop-blur-sm hover:bg-zinc-100 dark:hover:bg-zinc-900">
-              <Plus className="h-4 w-4 mr-2" /> New Entry
+            <Button onClick={handleNewEntry} variant="outline" size="sm" className="h-10 px-3 lg:px-4 text-xs font-medium text-zinc-900 dark:text-zinc-100 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-black/50 backdrop-blur-sm hover:bg-zinc-100 dark:hover:bg-zinc-900">
+              <Plus className="h-4 w-4 lg:mr-2" /> <span className="hidden lg:inline">New Entry</span>
             </Button>
             <Popover>
-              <PopoverTrigger className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "h-10 px-4 text-xs font-medium text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 rounded-xl border border-zinc-100 dark:border-zinc-900 bg-white/50 dark:bg-black/50 backdrop-blur-sm")}>
-                <Sparkles className={`h-4 w-4 mr-2 ${isAiLoading ? 'animate-pulse' : ''}`} /> AI Assist
+              <PopoverTrigger className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "h-10 px-3 lg:px-4 text-xs font-medium text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 rounded-xl border border-zinc-100 dark:border-zinc-900 bg-white/50 dark:bg-black/50 backdrop-blur-sm")}>
+                <Sparkles className={`h-4 w-4 lg:mr-2 ${isAiLoading ? 'animate-pulse' : ''}`} /> <span className="hidden lg:inline">AI Assist</span>
               </PopoverTrigger>
               <PopoverContent className="w-48 p-2 rounded-xl border-zinc-100 dark:border-zinc-900 shadow-2xl" align="end">
                 <div className="px-2 py-1.5 mb-1 text-[10px] font-bold uppercase tracking-widest text-zinc-400 flex justify-between">
@@ -397,7 +397,7 @@ export default function JournalPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar">
-          <div className="max-w-3xl mx-auto px-8 py-24 lg:px-16 min-h-full">
+          <div className="max-w-3xl mx-auto px-4 py-20 lg:px-16 lg:py-24 min-h-full">
             <AnimatePresence mode="wait">
               {isAiLoading ? (
                 <motion.div key="loading" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.05 }} className="flex h-[60vh] items-center justify-center">
@@ -405,13 +405,13 @@ export default function JournalPage() {
                 </motion.div>
               ) : (
                 <motion.div layoutId="editor-container" key={selectedId || "new"} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, type: "spring", bounce: 0.2 }}>
-                  <div className="flex items-center gap-4 text-zinc-400 mb-12 text-[10px] font-bold uppercase tracking-[0.2em]">
+                  <div className="flex items-center gap-3 lg:gap-4 text-zinc-400 mb-8 lg:mb-12 text-[10px] font-bold uppercase tracking-[0.2em]">
                     <span>{format(selectedDate || new Date(), "EEEE, MMMM d")}</span>
                     <Separator orientation="vertical" className="h-3 bg-zinc-200 dark:bg-zinc-800" />
                     <Popover>
                       <PopoverTrigger className="hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors flex items-center gap-2 group text-[10px] font-bold uppercase tracking-[0.2em]">
                         <Smile className="h-4 w-4 transition-transform group-hover:scale-110" />
-                        {selectedMood ? `${selectedMood.emoji} ${selectedMood.name}` : "Set Mood"}
+                        <span className="max-w-[80px] truncate">{selectedMood ? `${selectedMood.emoji} ${selectedMood.name}` : "Set Mood"}</span>
                       </PopoverTrigger>
                       <PopoverContent className="w-64 p-3 rounded-xl border-zinc-100 dark:border-zinc-900 shadow-2xl" align="start">
                         <div className="grid grid-cols-3 gap-2">
@@ -425,7 +425,7 @@ export default function JournalPage() {
                       </PopoverContent>
                     </Popover>
                   </div>
-                  <input type="text" placeholder="Title your thought..." value={title} onChange={(e) => setTitle(e.target.value)} className={cn("w-full font-bold bg-transparent border-none focus:outline-none placeholder:text-zinc-100 dark:placeholder:text-zinc-900 mb-16 tracking-tight transition-all text-4xl lg:text-5xl", appearance.fontFamily)} />
+                  <input type="text" placeholder="Title your thought..." value={title} onChange={(e) => setTitle(e.target.value)} className={cn("w-full font-bold bg-transparent border-none focus:outline-none placeholder:text-zinc-100 dark:placeholder:text-zinc-900 mb-10 lg:mb-16 tracking-tight transition-all text-3xl lg:text-5xl", appearance.fontFamily)} />
                   <Editor content={content} onChange={setContent} />
                 </motion.div>
               )}
@@ -433,16 +433,16 @@ export default function JournalPage() {
           </div>
         </div>
 
-        <div className="h-16 border-t border-zinc-100 dark:border-zinc-900 bg-white/80 dark:bg-black/80 backdrop-blur-md px-8 flex items-center justify-between text-[10px] text-zinc-400 uppercase tracking-[0.2em] font-bold z-20">
-          <div className="flex items-center gap-6">
-            <span className="flex items-center gap-2"><Hash className="h-3 w-3" /> {(content || "").replace(/<[^>]*>?/gm, '').split(/\s+/).filter(Boolean).length} Words</span>
-            <span className="hidden sm:inline opacity-50">Auto-saved at {format(new Date(), "HH:mm")}</span>
+        <div className="h-16 border-t border-zinc-100 dark:border-zinc-900 bg-white/80 dark:bg-black/80 backdrop-blur-md px-4 lg:px-8 flex items-center justify-between text-[10px] text-zinc-400 uppercase tracking-[0.2em] font-bold z-20">
+          <div className="flex items-center gap-4 lg:gap-6">
+            <span className="flex items-center gap-2"><Hash className="h-3 w-3" /> {(content || "").replace(/<[^>]*>?/gm, '').split(/\s+/).filter(Boolean).length} <span className="hidden lg:inline">Words</span></span>
+            <span className="hidden sm:inline opacity-50">Saved at {format(new Date(), "HH:mm")}</span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 lg:gap-4">
              {view === "deleted" ? (
                <div className="flex gap-2">
                  <Button variant="ghost" size="sm" className="h-8 text-[10px] font-bold uppercase tracking-widest text-green-600" onClick={() => selectedId && handleRestore(selectedId)}>Restore</Button>
-                 <Button variant="ghost" size="sm" className="h-8 text-[10px] font-bold uppercase tracking-widest text-red-600" onClick={() => selectedId && handleHardDelete(selectedId)}>Delete Forever</Button>
+                 <Button variant="ghost" size="sm" className="h-8 text-[10px] font-bold uppercase tracking-widest text-red-600" onClick={() => selectedId && handleHardDelete(selectedId)}>Delete</Button>
                </div>
              ) : (
                <>
@@ -451,7 +451,7 @@ export default function JournalPage() {
                      <Download className="h-4 w-4" />
                    </PopoverTrigger>
                    <PopoverContent className="w-32 p-2 rounded-xl border-zinc-100 dark:border-zinc-900 shadow-2xl" align="end" side="top">
-                     <Button variant="ghost" className="w-full justify-start text-xs h-9 rounded-lg" onClick={() => handleExport("md")}>Export Markdown</Button>
+                     <Button variant="ghost" className="w-full justify-start text-xs h-9 rounded-lg" onClick={() => handleExport("md")}>Export MD</Button>
                    </PopoverContent>
                  </Popover>
                  
@@ -475,7 +475,7 @@ export default function JournalPage() {
 
         <AnimatePresence>
           {(aiSummary !== null || aiSuggestion !== null) && (
-            <motion.div initial={{ opacity: 0, y: 20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20, scale: 0.95 }} className="fixed bottom-24 right-8 w-[400px] border border-zinc-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md rounded-xl shadow-2xl flex flex-col z-50 overflow-hidden">
+            <motion.div initial={{ opacity: 0, y: 20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20, scale: 0.95 }} className="fixed bottom-20 right-4 left-4 lg:bottom-24 lg:right-8 lg:left-auto lg:w-[400px] border border-zinc-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md rounded-xl shadow-2xl flex flex-col z-50 overflow-hidden">
               <div className="p-5 flex items-center justify-between border-b border-zinc-100 dark:border-zinc-900 bg-zinc-50/50 dark:bg-zinc-900/50">
                 <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400">
                   <Sparkles className="h-3.5 w-3.5" /> {aiSummary !== null ? "AI Reflection" : "Polished Flow"}

@@ -175,21 +175,21 @@ export default function ChatPage() {
       
       <main className="flex-1 flex flex-col relative overflow-hidden h-full">
         {!sidebarOpen && (
-          <Button variant="ghost" size="icon" className="absolute left-6 top-6 z-10 h-10 w-10 text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-950 rounded-xl shadow-sm border border-zinc-100 dark:border-zinc-900" onClick={() => setSidebarOpen(true)}>
+          <Button variant="ghost" size="icon" className="absolute left-4 top-4 lg:left-6 lg:top-6 z-10 h-10 w-10 text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-950 rounded-xl shadow-sm border border-zinc-100 dark:border-zinc-900" onClick={() => setSidebarOpen(true)}>
             <ChevronRight className="h-4 w-4" />
           </Button>
         )}
 
-        <div className="absolute right-6 top-6 z-10">
-           <Button onClick={generateProfile} disabled={isGeneratingProfile} variant="outline" size="sm" className="h-10 px-4 text-xs font-medium text-zinc-900 dark:text-zinc-100 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-black/50 backdrop-blur-sm hover:bg-zinc-100 dark:hover:bg-zinc-900">
-              <RefreshCw className={cn("h-4 w-4 mr-2", isGeneratingProfile && "animate-spin")} /> Update AI Knowledge
+        <div className="absolute right-4 top-4 lg:right-6 lg:top-6 z-10">
+           <Button onClick={generateProfile} disabled={isGeneratingProfile} variant="outline" size="sm" className="h-10 px-3 lg:px-4 text-xs font-medium text-zinc-900 dark:text-zinc-100 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-black/50 backdrop-blur-sm hover:bg-zinc-100 dark:hover:bg-zinc-900">
+              <RefreshCw className={cn("h-4 w-4 lg:mr-2", isGeneratingProfile && "animate-spin")} /> <span className="hidden lg:inline">Update AI Knowledge</span>
            </Button>
         </div>
 
-        <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full p-6 pt-24 md:pt-24 lg:pt-32 h-full">
-          <div className="mb-8">
-            <h1 className="text-4xl md:text-5xl font-black tracking-tight mb-2 flex items-center gap-4">
-               Dainiki Companion <Sparkles className="h-8 w-8 text-amber-500" />
+        <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full p-4 pt-20 lg:p-6 lg:pt-32 h-full">
+          <div className="mb-6 lg:mb-8">
+            <h1 className="text-3xl lg:text-5xl font-black tracking-tight mb-2 flex items-center gap-3 lg:gap-4">
+               Dainiki Companion <Sparkles className="h-6 w-6 lg:h-8 lg:w-8 text-amber-500" />
             </h1>
             <p className="text-[10px] font-bold uppercase tracking-[0.4em] text-zinc-400">
                Your private, empathetic listener
@@ -198,12 +198,12 @@ export default function ChatPage() {
 
           <div 
             ref={scrollRef}
-            className="flex-1 overflow-y-auto custom-scrollbar mb-6 space-y-6 pr-4"
+            className="flex-1 overflow-y-auto custom-scrollbar mb-4 lg:mb-6 space-y-6 pr-2 lg:pr-4"
           >
             {messages.length === 0 && (
-              <div className="h-full flex flex-col items-center justify-center opacity-50 text-center space-y-4">
-                <Bot className="h-16 w-16" />
-                <p className="text-sm max-w-sm">I'm here to listen, support, and reflect with you. What's on your mind?</p>
+              <div className="h-full flex flex-col items-center justify-center opacity-50 text-center space-y-4 px-4">
+                <Bot className="h-12 w-12 lg:h-16 lg:w-16" />
+                <p className="text-sm max-w-sm">I&apos;m here to listen, support, and reflect with you. What&apos;s on your mind?</p>
               </div>
             )}
             
@@ -214,7 +214,7 @@ export default function ChatPage() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   className={cn(
-                    "flex gap-4 max-w-[85%]",
+                    "flex gap-3 lg:gap-4 max-w-[95%] lg:max-w-[85%]",
                     msg.role === "user" ? "ml-auto flex-row-reverse" : "mr-auto"
                   )}
                 >
@@ -225,7 +225,7 @@ export default function ChatPage() {
                     {msg.role === "user" ? <UserIcon className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
                   </div>
                   <div className={cn(
-                    "p-4 rounded-xl text-sm leading-relaxed",
+                    "p-3 lg:p-4 rounded-xl text-sm leading-relaxed",
                     msg.role === "user" ? "bg-zinc-100 dark:bg-zinc-900" : "bg-white dark:bg-zinc-950 border border-zinc-100 dark:border-zinc-800 shadow-sm prose prose-zinc dark:prose-invert prose-sm max-w-none"
                   )}>
                      <div dangerouslySetInnerHTML={{ __html: msg.role === "ai" ? formatMarkdown(msg.content) : msg.content.replace(/\n/g, '<br/>') }} />
@@ -235,20 +235,20 @@ export default function ChatPage() {
             </AnimatePresence>
           </div>
 
-          <div className="relative shrink-0">
+          <div className="relative shrink-0 pb-4">
             <input 
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
               placeholder="Share your thoughts..."
               autoFocus
-              className="w-full h-14 pl-6 pr-14 rounded-xl bg-zinc-100/50 dark:bg-zinc-900/50 border-none shadow-inner text-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-300"
+              className="w-full h-12 lg:h-14 pl-4 lg:pl-6 pr-12 lg:pr-14 rounded-xl bg-zinc-100/50 dark:bg-zinc-900/50 border-none shadow-inner text-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-300"
             />
             <Button 
               size="icon" 
               onClick={handleSend} 
               disabled={isLoading || !input.trim()}
-              className="absolute right-2 top-2 h-10 w-10 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200"
+              className="absolute right-1.5 top-1 lg:right-2 lg:top-2 h-9 w-9 lg:h-10 lg:w-10 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200"
             >
               <Send className="h-4 w-4" />
             </Button>
