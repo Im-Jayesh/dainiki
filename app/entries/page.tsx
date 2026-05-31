@@ -73,7 +73,7 @@ export default function EntriesPage() {
   useEffect(() => {
     const loadMoods = async () => {
       const data = await fetchMoods();
-      setMoods(data as Mood[]);
+      setMoods(data as unknown as Mood[]);
     };
     loadMoods();
   }, []);

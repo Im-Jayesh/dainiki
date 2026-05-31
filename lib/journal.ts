@@ -151,8 +151,10 @@ export async function getMoods(userId?: number) {
     args: [userId || null]
   });
   return result.rows.map(m => ({
-    ...m,
     id: Number(m.id),
+    name: String(m.name),
+    emoji: String(m.emoji),
+    is_custom: Boolean(m.is_custom),
     user_id: m.user_id ? Number(m.user_id) : null
   }));
 }
