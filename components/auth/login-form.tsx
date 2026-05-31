@@ -166,7 +166,7 @@ export function LoginForm({ onForgotPassword, onRegister }: { onForgotPassword: 
             <form onSubmit={handlePinLogin} className="space-y-4">
               <div className="space-y-2">
                 <Input
-                  type="text"
+                  type="password"
                   inputMode="numeric"
                   pattern="[0-9]*"
                   placeholder="PIN"

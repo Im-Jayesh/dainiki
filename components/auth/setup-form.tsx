@@ -221,7 +221,7 @@ export function SetupForm({ onSwitchToLogin, initialStep = 1, initialUsername = 
               />
             </div>
             <Input
-              type="text"
+              type="password"
               placeholder="PIN (6 digits, required)"
               value={formData.pin}
               onChange={(e) => setFormData({ ...formData, pin: e.target.value })}

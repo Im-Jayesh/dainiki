@@ -15,6 +15,7 @@ export function SecuritySettings() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [currentPin, setCurrentPin] = useState("");
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   
@@ -33,15 +34,21 @@ export function SecuritySettings() {
     try {
       // 1. Verify current password by trying to decrypt master key
       const userData = await getUserData(user!.username);
-      if (!userData?.master_key_password || !userData?.salt) {
-         throw new Error("Security metadata missing");
+      if (!userData?.salt) {
+         throw new Error("Security salt missing. Contact support.");
       }
 
       let masterKey: string;
-      try {
-        masterKey = await decrypt(userData.master_key_password, currentPassword, userData.salt);
-      } catch (err) {
-        throw new Error("Incorrect current password");
+      if (!userData.master_key_password) {
+        // Upgrade Path: User registered before E2EE master key was implemented.
+        // In this case, their current password IS their master key.
+        masterKey = currentPassword;
+      } else {
+        try {
+          masterKey = await decrypt(userData.master_key_password, currentPassword, userData.salt);
+        } catch (err) {
+          throw new Error("Incorrect current password");
+        }
       }
 
       // 2. Re-encrypt master key with NEW password
@@ -53,7 +60,7 @@ export function SecuritySettings() {
         master_key_password: newEncryptedMasterKey
       });
 
-      setMessage({ type: "success", text: "Password updated successfully" });
+      setMessage({ type: "success", text: "Password updated and vault security upgraded." });
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
@@ -85,6 +92,19 @@ export function SecuritySettings() {
       }
 
       const userData = await getUserData(user!.username);
+      
+      // Security Check: Verify current PIN if one exists
+      if (userData?.master_key_pin) {
+        try {
+          const decryptedKey = await decrypt(userData.master_key_pin, currentPin, userData!.salt);
+          if (decryptedKey !== encryptionKey) {
+            throw new Error("Incorrect current PIN");
+          }
+        } catch (err) {
+          throw new Error("Incorrect current PIN");
+        }
+      }
+
       const newEncryptedMasterKey = await encrypt(encryptionKey as string, newPin, userData!.salt);
 
       await updateVaultSecurity({
@@ -93,6 +113,7 @@ export function SecuritySettings() {
       });
 
       setMessage({ type: "success", text: "PIN updated successfully" });
+      setCurrentPin("");
       setNewPin("");
       setConfirmPin("");
     } catch (err: any) {
@@ -141,8 +162,9 @@ export function SecuritySettings() {
           <ShieldAlert className="h-3.5 w-3.5" /> Change PIN
         </div>
         <div className="space-y-2">
-          <Input type="text" inputMode="numeric" maxLength={6} placeholder="New 6-Digit PIN" value={newPin} onChange={(e) => setNewPin(e.target.value)} className="bg-zinc-50 dark:bg-zinc-900 border-none h-10 text-center tracking-[0.5em]" required />
-          <Input type="text" inputMode="numeric" maxLength={6} placeholder="Confirm New PIN" value={confirmPin} onChange={(e) => setConfirmPin(e.target.value)} className="bg-zinc-50 dark:bg-zinc-900 border-none h-10 text-center tracking-[0.5em]" required />
+          <Input type="password" inputMode="numeric" maxLength={6} placeholder="Current 6-Digit PIN" value={currentPin} onChange={(e) => setCurrentPin(e.target.value)} className="bg-zinc-50 dark:bg-zinc-900 border-none h-10 text-center tracking-[0.5em]" required />
+          <Input type="password" inputMode="numeric" maxLength={6} placeholder="New 6-Digit PIN" value={newPin} onChange={(e) => setNewPin(e.target.value)} className="bg-zinc-50 dark:bg-zinc-900 border-none h-10 text-center tracking-[0.5em]" required />
+          <Input type="password" inputMode="numeric" maxLength={6} placeholder="Confirm New PIN" value={confirmPin} onChange={(e) => setConfirmPin(e.target.value)} className="bg-zinc-50 dark:bg-zinc-900 border-none h-10 text-center tracking-[0.5em]" required />
         </div>
         <Button type="submit" variant="outline" className="w-full h-10 rounded-xl text-[10px] font-bold uppercase tracking-widest border-zinc-200 dark:border-zinc-800" disabled={isUpdating}>
           {isUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Update PIN"}

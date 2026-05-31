@@ -133,7 +133,7 @@ export function SecurityGate({ children }: { children: React.ReactNode }) {
                   </TabsList>
                   <TabsContent value="pin">
                     <form onSubmit={handleUnlockWithPin} className="space-y-4">
-                      <Input type="text" inputMode="numeric" pattern="[0-9]*" placeholder="Enter PIN" value={unlockPin} onChange={(e) => setUnlockPin(e.target.value)} className="bg-zinc-50 dark:bg-zinc-800/50 text-center text-2xl tracking-[1em] h-14" maxLength={6} required autoFocus />
+                      <Input type="password" inputMode="numeric" pattern="[0-9]*" placeholder="Enter PIN" value={unlockPin} onChange={(e) => setUnlockPin(e.target.value)} className="bg-zinc-50 dark:bg-zinc-800/50 text-center text-2xl tracking-[1em] h-14" maxLength={6} required autoFocus />
                       {unlockError && <p className="text-xs text-red-500 text-center font-medium">{unlockError}</p>}
                       <Button type="submit" className="w-full h-11 rounded-xl font-bold uppercase tracking-widest text-xs" disabled={isUnlocking}>
                         {isUnlocking ? <Loader2 className="h-4 w-4 animate-spin" /> : "Unlock"}
