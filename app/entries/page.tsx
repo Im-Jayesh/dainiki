@@ -202,7 +202,6 @@ export default function EntriesPage() {
                           mode="single"
                           selected={selectedDate}
                           onSelect={setSelectedDate}
-                          initialFocus
                           className="bg-white dark:bg-zinc-950 p-4"
                         />
                         {selectedDate && (
