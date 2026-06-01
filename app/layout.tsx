@@ -5,7 +5,6 @@ import { AuthProvider } from "@/contexts/auth-context";
 import { SecurityGate } from "@/components/security-gate";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "sonner";
-import { OneSignalInit } from "@/components/onesignal-init";
 import { SettingsProvider } from "@/contexts/settings-context";
 import Init from "./init";
 
@@ -66,7 +65,6 @@ export default function RootLayout({
           <SettingsProvider>
             <Init>
               <AuthProvider>
-                <OneSignalInit />
                 <SecurityGate>{children}</SecurityGate>
               </AuthProvider>
             </Init>

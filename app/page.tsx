@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Editor } from "@/components/editor";
 import { saveEntry, getAllEntries, deleteEntry, fetchMoods } from "@/lib/actions/journal";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Plus, Hash, Smile, Sparkles, AlertCircle, Zap, X, Trash2, Download, Archive, ArchiveRestore, ChevronRight } from "lucide-react";
+import { Search, Plus, Hash, Smile, Sparkles, AlertCircle, Zap, X, Trash2, Download, Archive, ArchiveRestore, ChevronRight, LayoutDashboard, Palette, Bot, ShieldCheck } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -251,7 +251,7 @@ export default function JournalPage() {
     URL.revokeObjectURL(url);
   };
 
-  const handleAiAssist = async (type: "summarize" | "format") => {
+  const handleAiAssist = async (type: "summarize" | "format" | "reflect") => {
     if (!content) return;
     const { deductAiCredit } = await import("@/lib/actions/auth");
     const creditRes = await deductAiCredit();
@@ -265,14 +265,20 @@ export default function JournalPage() {
     setIsAiLoading(true);
     setAiError(null);
     if (type === "summarize") setAiSummary("");
-    if (type === "format") setAiSuggestion("");
+    else if (type === "format") setAiSuggestion("");
+    else setAiSummary(""); // Use summary state for reflection too
     
     try {
-      const prompt = type === "summarize" 
-        ? `Summarize this journal entry in 2-3 sentences. Be practical and grounded: ${content.replace(/<[^>]*>?/gm, '')}`
-        : `Rewrite this journal entry to be more polished and emotionally resonant, but keep my original tone. Use Markdown for structure (paragraphs, bold, lists). Entry: ${content.replace(/<[^>]*>?/gm, '')}`;
+      let prompt = "";
+      if (type === "summarize") {
+        prompt = `Summarize this journal entry in 2-3 sentences. Be practical and grounded: ${content.replace(/<[^>]*>?/gm, '')}`;
+      } else if (type === "format") {
+        prompt = `Rewrite this journal entry to be more polished and emotionally resonant, but keep my original tone. Use Markdown for structure (paragraphs, bold, lists). Entry: ${content.replace(/<[^>]*>?/gm, '')}`;
+      } else {
+        prompt = `You are a wise, empathetic reflection partner. Read this journal entry and ask 1-2 deep, open-ended questions that help the writer explore their emotions or situation further. Be concise and supportive. Entry: ${content.replace(/<[^>]*>?/gm, '')}`;
+      }
       
-      const response = await fetch("/api/ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt }) });
+      const response = await fetch("/api/ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt, feature: type }) });
       if (!response.ok) throw new Error(await response.text() || "AI failed to respond");
 
       const reader = response.body?.getReader();
@@ -285,7 +291,7 @@ export default function JournalPage() {
         if (done) break;
         const chunk = decoder.decode(value);
         fullResponse += chunk;
-        if (type === "summarize") setAiSummary(prev => (prev || "") + chunk);
+        if (type === "summarize" || type === "reflect") setAiSummary(prev => (prev || "") + chunk);
         else setAiSuggestion(prev => (prev || "") + chunk);
       }
     } catch (err: any) {
@@ -388,8 +394,15 @@ export default function JournalPage() {
                   <span>Credits</span>
                   <span className="text-zinc-900 dark:text-zinc-100">{user?.credits ?? 0}/10</span>
                 </div>
-                <Button variant="ghost" className="w-full justify-start text-xs h-9 rounded-lg" onClick={() => handleAiAssist("summarize")}>Summarize Entry</Button>
-                <Button variant="ghost" className="w-full justify-start text-xs h-9 rounded-lg" onClick={() => handleAiAssist("format")}>Polished Flow</Button>
+                <Button variant="ghost" className="w-full justify-start text-xs h-9 rounded-lg" onClick={() => handleAiAssist("summarize")}>
+                  <LayoutDashboard className="h-3.5 w-3.5 mr-2 text-blue-400" /> Summarize Entry
+                </Button>
+                <Button variant="ghost" className="w-full justify-start text-xs h-9 rounded-lg" onClick={() => handleAiAssist("format")}>
+                  <Palette className="h-3.5 w-3.5 mr-2 text-amber-400" /> Polished Flow
+                </Button>
+                <Button variant="ghost" className="w-full justify-start text-xs h-9 rounded-lg" onClick={() => handleAiAssist("reflect")}>
+                  <Bot className="h-3.5 w-3.5 mr-2 text-purple-400" /> Deep Reflection
+                </Button>
               </PopoverContent>
             </Popover>
           </div>
@@ -405,25 +418,31 @@ export default function JournalPage() {
                 </motion.div>
               ) : (
                 <motion.div layoutId="editor-container" key={selectedId || "new"} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, type: "spring", bounce: 0.2 }}>
-                  <div className="flex items-center gap-3 lg:gap-4 text-zinc-400 mb-8 lg:mb-12 text-[10px] font-bold uppercase tracking-[0.2em]">
-                    <span>{format(selectedDate || new Date(), "EEEE, MMMM d")}</span>
-                    <Separator orientation="vertical" className="h-3 bg-zinc-200 dark:bg-zinc-800" />
-                    <Popover>
-                      <PopoverTrigger className="hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors flex items-center gap-2 group text-[10px] font-bold uppercase tracking-[0.2em]">
-                        <Smile className="h-4 w-4 transition-transform group-hover:scale-110" />
-                        <span className="max-w-[80px] truncate">{selectedMood ? `${selectedMood.emoji} ${selectedMood.name}` : "Set Mood"}</span>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-64 p-3 rounded-xl border-zinc-100 dark:border-zinc-900 shadow-2xl" align="start">
-                        <div className="grid grid-cols-3 gap-2">
-                          {moods.map((m) => (
-                            <button key={m.id} onClick={() => { setMoodId(m.id); }} className={cn("flex flex-col items-center gap-1.5 p-3 rounded-xl transition-all", moodId === m.id ? "bg-zinc-100 dark:bg-zinc-900" : "hover:bg-zinc-50 dark:hover:bg-zinc-900/50")}>
-                              <span className="text-xl">{m.emoji}</span>
-                              <span className="text-[10px] font-medium text-zinc-500">{m.name}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
+                  <div className="flex items-center justify-between mb-8 lg:mb-12">
+                    <div className="flex items-center gap-3 lg:gap-4 text-zinc-400 text-[10px] font-bold uppercase tracking-[0.2em]">
+                      <span>{format(selectedDate || new Date(), "EEEE, MMMM d")}</span>
+                      <Separator orientation="vertical" className="h-3 bg-zinc-200 dark:bg-zinc-800" />
+                      <Popover>
+                        <PopoverTrigger className="hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors flex items-center gap-2 group text-[10px] font-bold uppercase tracking-[0.2em]">
+                          <Smile className="h-4 w-4 transition-transform group-hover:scale-110" />
+                          <span className="max-w-[80px] truncate">{selectedMood ? `${selectedMood.emoji} ${selectedMood.name}` : "Set Mood"}</span>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-64 p-3 rounded-xl border-zinc-100 dark:border-zinc-900 shadow-2xl" align="start">
+                          <div className="grid grid-cols-3 gap-2">
+                            {moods.map((m) => (
+                              <button key={m.id} onClick={() => { setMoodId(m.id); }} className={cn("flex flex-col items-center gap-1.5 p-3 rounded-xl transition-all", moodId === m.id ? "bg-zinc-100 dark:bg-zinc-900" : "hover:bg-zinc-50 dark:hover:bg-zinc-900/50")}>
+                                <span className="text-xl">{m.emoji}</span>
+                                <span className="text-[10px] font-medium text-zinc-500">{m.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[8px] font-black uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400">
+                      <ShieldCheck className="h-3 w-3" /> E2E Encrypted
+                    </div>
                   </div>
                   <input type="text" placeholder="Title your thought..." value={title} onChange={(e) => setTitle(e.target.value)} className={cn("w-full font-bold bg-transparent border-none focus:outline-none placeholder:text-zinc-100 dark:placeholder:text-zinc-900 mb-10 lg:mb-16 tracking-tight transition-all text-3xl lg:text-5xl", appearance.fontFamily)} />
                   <Editor content={content} onChange={setContent} />
@@ -487,9 +506,21 @@ export default function JournalPage() {
               <ScrollArea className="max-h-[60vh] p-6">
                 <div className="prose prose-zinc dark:prose-invert prose-sm max-w-none">
                   {aiSummary !== null ? (
-                    <div className="text-base leading-relaxed italic text-zinc-600 dark:text-zinc-400 font-serif" dangerouslySetInnerHTML={{ __html: formatMarkdown(aiSummary) || "Dainiki is contemplating your entry..." }} />
+                    aiSummary === "" ? (
+                      <div className="text-base leading-relaxed italic text-zinc-400 animate-pulse font-serif">
+                        Dainiki is contemplating your entry...
+                      </div>
+                    ) : (
+                      <div className="text-base leading-relaxed italic text-zinc-600 dark:text-zinc-400 font-serif" dangerouslySetInnerHTML={{ __html: formatMarkdown(aiSummary) }} />
+                    )
                   ) : (
-                    <div className="leading-relaxed text-zinc-700 dark:text-zinc-300" dangerouslySetInnerHTML={{ __html: formatMarkdown(aiSuggestion || "") || "Dainiki is weaving your thoughts..." }} />
+                    aiSuggestion === "" ? (
+                      <div className="leading-relaxed text-zinc-400 animate-pulse">
+                        Dainiki is weaving your thoughts...
+                      </div>
+                    ) : (
+                      <div className="leading-relaxed text-zinc-700 dark:text-zinc-300" dangerouslySetInnerHTML={{ __html: formatMarkdown(aiSuggestion || "") }} />
+                    )
                   )}
                 </div>
               </ScrollArea>

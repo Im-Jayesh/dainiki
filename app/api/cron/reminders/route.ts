@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { sendOneSignalNotification } from "@/lib/notifications";
+import { sendEmailReminder } from "@/lib/notifications";
 import { format } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
 
   try {
     // Fetch all users with reminders enabled
-    const result = await db.execute("SELECT id, username, settings FROM users");
+    const result = await db.execute("SELECT id, username, email, settings FROM users");
     const users = result.rows;
     
     console.log(`[Vercel Cron] Found ${users.length} total users.`);
@@ -44,11 +44,10 @@ export async function GET(req: NextRequest) {
         console.log(`[Vercel Cron] Checking user ${user.username}. Scheduled: ${reminders.time}, Local now: ${localTimeString} (${userTimezone})`);
 
         if (reminders.time === localTimeString) {
-          console.log(`[Vercel Cron] TIME MATCH! Sending notification to ${user.username}...`);
-          await sendOneSignalNotification(
-            "Journaling Time",
-            `Hi ${user.username}, it's time to capture your thoughts for today!`,
-            [user.username as string]
+          console.log(`[Vercel Cron] TIME MATCH! Sending email to ${user.username}...`);
+          await sendEmailReminder(
+            user.email as string,
+            user.username as string
           );
           results.push({ user: user.username, status: "sent", time: localTimeString });
         }
@@ -57,7 +56,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    console.log(`[Vercel Cron] Finished. Sent ${results.length} notifications.`);
+    console.log(`[Vercel Cron] Finished. Sent ${results.length} email notifications.`);
     return NextResponse.json({ success: true, processed: results.length, details: results });
   } catch (err: any) {
     console.error("[Vercel Cron] Database error:", err);

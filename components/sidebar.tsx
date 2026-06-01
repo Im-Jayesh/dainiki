@@ -23,7 +23,8 @@ import {
   Lock,
   ShieldCheck,
   ShieldAlert,
-  Key
+  Sprout,
+  Gamepad2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
@@ -41,9 +42,13 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { SecuritySettings } from "./auth/security-settings";
+import { useState, useEffect } from "react";
+import { getAllEntries } from "@/lib/actions/journal";
+import { isSameDay, subDays } from "date-fns";
 
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
+  { label: "Garden", href: "/garden", icon: Sprout },
   { label: "Vault", href: "/entries", icon: Database },
   { label: "Palace", href: "/calendar", icon: CalendarIcon },
   { label: "Companion", href: "/chat", icon: Bot },
@@ -63,6 +68,50 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
   const { appearance, setAppearance, reminders, setReminders } = useSettings();
   const pathname = usePathname();
   const router = useRouter();
+
+  const [streak, setStreak] = useState(0);
+  const [lastEntryDate, setLastEntryDate] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    const calculateStreak = async () => {
+      if (!user) return;
+      const entries = await getAllEntries();
+      if (entries.length === 0) {
+        setStreak(0);
+        return;
+      }
+
+      setLastEntryDate(entries[0].created_at);
+
+      let currentStreak = 0;
+      let checkDate = new Date();
+      
+      // Check if there's an entry today or yesterday to continue streak
+      const hasToday = entries.some(e => isSameDay(new Date(e.created_at), checkDate));
+      const hasYesterday = entries.some(e => isSameDay(new Date(e.created_at), subDays(checkDate, 1)));
+
+      if (!hasToday && !hasYesterday) {
+        setStreak(0);
+        return;
+      }
+
+      // Start from the most recent day that has an entry
+      if (!hasToday) checkDate = subDays(checkDate, 1);
+
+      while (true) {
+        const hasEntry = entries.some(e => isSameDay(new Date(e.created_at), checkDate));
+        if (hasEntry) {
+          currentStreak++;
+          checkDate = subDays(checkDate, 1);
+        } else {
+          break;
+        }
+      }
+      setStreak(currentStreak);
+    };
+
+    calculateStreak();
+  }, [user]);
 
   return (
     <>
@@ -251,9 +300,9 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
                         <Separator className="bg-zinc-100 dark:bg-zinc-800" />
 
                         <div className="space-y-4">
-                          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-zinc-400"><Bell className="h-3 w-3" /> Reminders</div>
+                          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-zinc-400"><Bell className="h-3 w-3" /> Email Reminders</div>
                           <div className="flex items-center justify-between px-1">
-                            <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Enable Notifications</span>
+                            <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Enable Reminders</span>
                             <input 
                               type="checkbox" 
                               checked={reminders.enabled} 
@@ -263,10 +312,6 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
                                 const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
                                 const { updateSettings } = await import("@/lib/actions/auth");
                                 await updateSettings({ reminders: next, appearance, timezone });
-                                if (e.target.checked) {
-                                  const OneSignal = (await import("react-onesignal")).default;
-                                  await OneSignal.Notifications.requestPermission();
-                                }
                               }}
                               className="accent-zinc-900 dark:accent-zinc-100"
                             />

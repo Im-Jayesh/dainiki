@@ -26,9 +26,9 @@ export async function POST(req: NextRequest) {
     
     TONE & VOICE:
     1. MATCH THE USER: Adjust your tone to match how the user writes. If they are casual, be casual. If they are brief, be concise.
-    2. AVOID FORMALITY: Do not sound like an academic or a poet. Avoid "majestic", "sophisticated", or overly flowery language (e.g., no "weaving thoughts" or "deep warmth and validation"). Just be a real, helpful friend.
-    3. BE GROUNDED: Talk like a normal person would in a conversation. Use simple, direct language.
-    4. PROVIDE SUPPORT: If they are struggling, offer gentle, practical perspective and validation without being melodramatic.
+    2. NO FLOWERY LANGUAGE: Do not use words like "majestic", "sophisticated", "tapestry", "echoes", or "sanctuary". Avoid "weaving thoughts" or "deep warmth". Just be a real, helpful human friend. No poetic filler.
+    3. BE GROUNDED: Talk like a normal person would in a 1-on-1 conversation. Use simple, direct language.
+    4. PROVIDE SUPPORT: If they are struggling, offer gentle, practical perspective and validation without being melodramatic or overly soft.
     5. STRUCTURE: Use clean Markdown (bold, italic, lists) where appropriate, but don't overdo it.
     
     If they are writing an entry: Help them clarify their thoughts or offer a brief, grounded reflection.
@@ -43,7 +43,28 @@ export async function POST(req: NextRequest) {
       systemInstruction: baseInstruction
     });
 
-    const result = await model.generateContentStream(prompt);
+    // Implement retry logic for 503 (High Demand) errors
+    let result;
+    let retries = 0;
+    const maxRetries = 3;
+    
+    while (retries <= maxRetries) {
+      try {
+        result = await model.generateContentStream(prompt);
+        break; // Success, exit loop
+      } catch (err: any) {
+        if (err.status === 503 && retries < maxRetries) {
+          retries++;
+          const delay = Math.pow(2, retries) * 1000; // Exponential backoff: 2s, 4s, 8s
+          console.warn(`[AI] 503 High Demand for ${feature}. Retrying in ${delay}ms... (Attempt ${retries}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        throw err; // Re-throw if not 503 or max retries reached
+      }
+    }
+
+    if (!result) throw new Error("AI failed to initialize stream after retries");
     
     const stream = new ReadableStream({
       async start(controller) {

@@ -105,10 +105,19 @@ export default function EntriesPage() {
 
   const filteredEntries = useMemo(() => {
     const lowerQuery = searchQuery.toLowerCase();
+
+    const parseUTCDate = (dateStr: string) => {
+      if (!dateStr) return new Date();
+      if (dateStr.includes('T')) return new Date(dateStr);
+      // SQLite format: YYYY-MM-DD HH:MM:SS (UTC)
+      return new Date(dateStr.replace(' ', 'T') + 'Z');
+    };
+
     return entries.filter(e => {
       // 1. Text Search Filter
-      const dateFull = format(new Date(e.created_at), 'yyyy-MM-dd');
-      const datePretty = format(new Date(e.created_at), 'PPP').toLowerCase();
+      const entryDate = parseUTCDate(e.created_at);
+      const dateFull = format(entryDate, 'yyyy-MM-dd');
+      const datePretty = format(entryDate, 'PPP').toLowerCase();
       const moodStr = (e.mood_name || "").toLowerCase();
       const matchesSearch = (e.title || "").toLowerCase().includes(lowerQuery) || 
              (e.content || "").toLowerCase().includes(lowerQuery) ||
@@ -122,7 +131,7 @@ export default function EntriesPage() {
       if (selectedMoodId !== null && e.mood_id !== selectedMoodId) return false;
 
       // 3. Date Filter
-      if (selectedDate && !isSameDay(new Date(e.created_at), selectedDate)) return false;
+      if (selectedDate && !isSameDay(entryDate, selectedDate)) return false;
 
       return true;
     });

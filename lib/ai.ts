@@ -48,13 +48,35 @@ export async function* streamOllama(prompt: string, model = "gemma4:e2b") {
 
 export async function* streamGemini(prompt: string, apiKey: string) {
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ 
-    model: "gemini-1.5-flash-lite",
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.5-flash",
     systemInstruction: "You are Dainiki AI, a majestic journaling assistant. Your task is to polish user entries for better flow, grammar, and emotional resonance while preserving their personal voice. Use clean Markdown formatting with clear spacing. If summarizing, be concise but profound. IMPORTANT: Return ONLY the polished content or summary, no conversational filler."
   });
-  
-  const result = await model.generateContentStream(prompt);
+
+  // Implement retry logic for 503 (High Demand) errors
+  let result;
+  let retries = 0;
+  const maxRetries = 3;
+
+  while (retries <= maxRetries) {
+    try {
+      result = await model.generateContentStream(prompt);
+      break;
+    } catch (err: any) {
+      if (err.status === 503 && retries < maxRetries) {
+        retries++;
+        const delay = Math.pow(2, retries) * 1000; // 2s, 4s, 8s
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  if (!result) throw new Error("AI failed to initialize stream after retries");
+
   for await (const chunk of result.stream) {
+
     yield chunk.text();
   }
 }

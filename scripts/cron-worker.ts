@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 import cron from "node-cron";
 import { db } from "../lib/db";
-import { sendOneSignalNotification } from "../lib/notifications";
+import { sendEmailReminder } from "../lib/notifications";
 import { format } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 
@@ -11,7 +11,7 @@ dotenv.config({ path: ".env" });
 
 console.log("Dainiki Cron Worker Starting...");
 console.log("Database URL:", process.env.TURSO_DATABASE_URL ? "Configured" : "MISSING");
-console.log("OneSignal App ID:", process.env.ONESIGNAL_APP_ID ? "Configured" : "MISSING");
+console.log("Email User:", process.env.EMAIL_USER ? "Configured" : "MISSING");
 
 // Track notified users to prevent double-pings in the same minute
 // Format: username-HH:mm
@@ -32,7 +32,7 @@ cron.schedule("* * * * *", async () => {
 
   try {
     // Fetch all users
-    const result = await db.execute("SELECT id, username, settings FROM users");
+    const result = await db.execute("SELECT id, username, email, settings FROM users");
     const users = result.rows;
 
     for (const user of users) {
@@ -46,12 +46,11 @@ cron.schedule("* * * * *", async () => {
         const localTimeString = format(localNow, "HH:mm");
 
         if (reminders.enabled && reminders.time === localTimeString && !notifiedThisMinute.has(`${user.username}-${localTimeString}`)) {
-          console.log(`[Cron] Sending notification to ${user.username} (Local Time: ${localTimeString}, TZ: ${userTimezone})...`);
+          console.log(`[Cron] Sending email to ${user.username} (Local Time: ${localTimeString}, TZ: ${userTimezone})...`);
           
-          await sendOneSignalNotification(
-            "Journaling Time",
-            `Hi ${user.username}, it's time to capture your thoughts for today!`,
-            [user.username as string]
+          await sendEmailReminder(
+            user.email as string,
+            user.username as string
           );
           
           notifiedThisMinute.add(`${user.username}-${localTimeString}`);
