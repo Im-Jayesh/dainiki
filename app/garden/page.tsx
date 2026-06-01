@@ -7,9 +7,10 @@ import { getAllEntries } from "@/lib/actions/journal";
 import { Sidebar } from "@/components/sidebar";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronRight, Droplets, Info, Music, Music2, Volume2, VolumeX, Eye, EyeOff } from "lucide-react";
+import { ChevronRight, Droplets, Info, Volume2, VolumeX, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { isSameDay, subDays } from "date-fns";
+import { useTheme } from "next-themes";
 
 const THEME_STYLES: Record<string, string> = {
   zinc: "text-zinc-900 dark:text-zinc-100",
@@ -24,12 +25,21 @@ interface Ripple {
   y: number;
 }
 
+interface Fish {
+  id: number;
+  type: 1 | 2;
+  top: string;
+  left: string;
+  rotation: number;
+  scale: number;
+}
+
 export default function GardenPage() {
   const { user } = useAuth();
   const { appearance } = useSettings();
+  const { resolvedTheme } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [streak, setStreak] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [totalEntries, setTotalEntries] = useState(0);
   const [ripples, setRipples] = useState<Ripple[]>([]);
   
@@ -39,10 +49,16 @@ export default function GardenPage() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const mainRef = useRef<HTMLElement | null>(null);
 
+  // Fish state - 3 fish for better luck with randomized sizes
+  const [fish, setFish] = useState<Fish[]>([
+    { id: 1, type: 1, top: "30%", left: "40%", rotation: 45, scale: 0.8 + Math.random() * 0.4 },
+    { id: 2, type: 2, top: "60%", left: "70%", rotation: -30, scale: 0.8 + Math.random() * 0.4 },
+    { id: 3, type: 2, top: "50%", left: "20%", rotation: 120, scale: 0.8 + Math.random() * 0.4 },
+  ]);
+
   useEffect(() => {
     const loadStats = async () => {
       if (!user) return;
-      setLoading(true);
       try {
         const entries = await getAllEntries();
         setTotalEntries(entries.length);
@@ -74,8 +90,6 @@ export default function GardenPage() {
         }
       } catch (e) {
         console.error(e);
-      } finally {
-        setLoading(false);
       }
     };
     loadStats();
@@ -102,7 +116,6 @@ export default function GardenPage() {
         setRipples(prev => prev.filter(r => r.id !== id));
       }, 2000);
       
-      // Schedule next ripple in 3-7 seconds
       const nextDelay = 3000 + Math.random() * 4000;
       timeoutId = setTimeout(triggerRandomRipple, nextDelay);
     };
@@ -110,6 +123,55 @@ export default function GardenPage() {
     timeoutId = setTimeout(triggerRandomRipple, 2000);
     return () => clearTimeout(timeoutId);
   }, []);
+
+  // Fish Movement (Every 30 sec)
+  useEffect(() => {
+    const moveFish = () => {
+      setFish(prevFish => prevFish.map(f => {
+        const nextTop = 10 + Math.random() * 80;
+        const nextLeft = 10 + Math.random() * 80;
+        
+        // Calculate angle towards next position
+        const currentTopNum = parseFloat(f.top);
+        const currentLeftNum = parseFloat(f.left);
+        const angle = Math.atan2(nextTop - currentTopNum, nextLeft - currentLeftNum) * (180 / Math.PI);
+
+        return {
+          ...f,
+          top: `${nextTop}%`,
+          left: `${nextLeft}%`,
+          rotation: angle + 90, // Adjust by 90deg if asset faces up/down
+        };
+      }));
+    };
+
+    const intervalId = setInterval(moveFish, 30000);
+    return () => clearInterval(intervalId);
+  }, []);
+
+  // Fish Ripples (Every 15 sec)
+  useEffect(() => {
+    const triggerFishRipples = () => {
+      if (!mainRef.current) return;
+      const { width, height } = mainRef.current.getBoundingClientRect();
+      
+      const newRipples: Ripple[] = fish.map(f => {
+        const x = (parseFloat(f.left) / 100) * width;
+        const y = (parseFloat(f.top) / 100) * height;
+        return { id: Date.now() + Math.random(), x, y };
+      });
+
+      setRipples(prev => [...prev, ...newRipples]);
+      
+      setTimeout(() => {
+        const ids = newRipples.map(r => r.id);
+        setRipples(prev => prev.filter(r => !ids.includes(r.id)));
+      }, 2000);
+    };
+
+    const intervalId = setInterval(triggerFishRipples, 15000);
+    return () => clearInterval(intervalId);
+  }, [fish]);
 
   const lilies = useMemo(() => {
     if (streak === 0) return [];
@@ -138,8 +200,9 @@ export default function GardenPage() {
         stage,
         top: `${10 + random() * 80}%`,
         left: `${10 + random() * 80}%`,
-        scale: 0.6 + random() * 0.6,
-        delay: random() * 2
+        scale: 0.6 + random() * 0.4,
+        delay: random() * 2,
+        rotationDuration: 4 + random() * 2
       });
     }
     return result;
@@ -169,6 +232,31 @@ export default function GardenPage() {
     }
   };
 
+  const triggerSplash = useCallback((left: string, top: string) => {
+    if (!mainRef.current) return;
+    const { width, height } = mainRef.current.getBoundingClientRect();
+    const x = (parseFloat(left) / 100) * width;
+    const y = (parseFloat(top) / 100) * height;
+
+    const splashRipples = [
+      { id: Date.now() + Math.random(), x, y },
+      { id: Date.now() + Math.random(), x: x + 10, y: y + 5 },
+      { id: Date.now() + Math.random(), x: x - 5, y: y - 10 },
+    ];
+
+    setRipples(prev => [...prev, ...splashRipples]);
+    
+    setTimeout(() => {
+      const ids = splashRipples.map(r => r.id);
+      setRipples(prev => prev.filter(r => !ids.includes(r.id)));
+    }, 1500); // Faster ripples
+  }, []);
+
+  const isDarkMode = resolvedTheme === "dark";
+  const pondBackground = isDarkMode 
+    ? "/pond-assets/ponds/rectpond-stage-1.png" 
+    : "/pond-assets/ponds/day-time-pond.png";
+
   return (
     <div 
       className={cn("flex h-screen w-full overflow-hidden transition-colors duration-500", THEME_STYLES[appearance.theme] || THEME_STYLES.zinc)}
@@ -190,12 +278,19 @@ export default function GardenPage() {
 
         {/* Full Screen Pond Background */}
         <div className="absolute inset-0 z-0">
-          <img
-            src="/pond-assets/ponds/rectpond-stage-1.png"
-            alt="Pond Background"
-            className="w-full h-full object-cover image-pixelated pointer-events-none"
-          />
-          <div className="absolute inset-0 bg-black/10 dark:bg-black/20 pointer-events-none" />
+          <AnimatePresence mode="wait">
+            <motion.img
+              key={pondBackground}
+              src={pondBackground}
+              alt="Pond Background"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 1 }}
+              className="w-full h-full object-cover image-pixelated pointer-events-none"
+            />
+          </AnimatePresence>
+          <div className="absolute inset-0 bg-black/5 dark:bg-black/20 pointer-events-none" />
         </div>
 
         {/* Floating Toggle Buttons (Top Left) */}
@@ -274,7 +369,7 @@ export default function GardenPage() {
                     <Info className="h-3.5 w-3.5 text-blue-500" /> Pond Logic
                   </div>
                   <p className="text-[10px] leading-relaxed opacity-60 font-medium">
-                    Tap the water to see ripples. A new lily grows every 8 days.
+                    Tap the water to see ripples. A new lily grows every 8 days. Fish move and create ripples naturally.
                   </p>
                 </motion.div>
               )}
@@ -332,6 +427,49 @@ export default function GardenPage() {
           </AnimatePresence>
         </div>
 
+        {/* Fish Layer */}
+        <div className="absolute inset-0 z-[8] pointer-events-none">
+          {fish.map((f) => (
+            <motion.div
+              key={`fish-${f.id}`}
+              animate={{ 
+                top: f.top, 
+                left: f.left,
+                rotate: f.rotation,
+                scale: f.scale 
+              }}
+              whileHover={{
+                x: [0, -2, 2, -2, 2, 0],
+                y: [0, 1, -1, 1, -1, 0],
+                transition: { duration: 0.2, repeat: Infinity }
+              }}
+              onMouseEnter={() => triggerSplash(f.left, f.top)}
+              transition={{ 
+                duration: 8, // Slower, more natural swim
+                ease: "easeInOut"
+              }}
+              className="absolute w-12 h-12 lg:w-16 lg:h-16 pointer-events-auto cursor-pointer"
+              style={{ transform: "translate(-50%, -50%)" }}
+            >
+              <motion.img 
+                src={`/pond-assets/ponds/fish-${f.type}.png`}
+                alt="Swimming Fish"
+                animate={{ 
+                  x: [0, 1, -1, 0],
+                  y: [0, -0.5, 0.5, 0],
+                  rotate: [0, 3, -3, 0] // Subtle swimming wiggle
+                }}
+                transition={{
+                  duration: 2.5,
+                  repeat: Infinity,
+                  ease: "easeInOut"
+                }}
+                className="w-full h-full object-contain image-pixelated opacity-80"
+              />
+            </motion.div>
+          ))}
+        </div>
+
         {/* Lilies Layer */}
         <div className="absolute inset-0 z-10 pointer-events-none">
           {lilies.map((lily) => (
@@ -352,7 +490,7 @@ export default function GardenPage() {
                 opacity: { duration: 1 },
                 scale: { type: "spring", damping: 15 },
                 rotate: { 
-                  duration: 4 + Math.random() * 2, 
+                  duration: lily.rotationDuration, 
                   repeat: Infinity, 
                   ease: "easeInOut",
                   delay: lily.delay 
