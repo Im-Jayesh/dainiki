@@ -3,13 +3,36 @@
 import { useAuth } from "@/contexts/auth-context";
 import { useSettings } from "@/contexts/settings-context";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { getAllEntries } from "@/lib/actions/journal";
+import { getAllEntries, fetchMoods } from "@/lib/actions/journal";
 import { Sidebar } from "@/components/sidebar";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronRight, Droplets, Info, Volume2, VolumeX, Eye, EyeOff } from "lucide-react";
+import { 
+  ChevronRight, 
+  Droplets, 
+  Info, 
+  Volume2, 
+  VolumeX, 
+  Eye, 
+  EyeOff,
+  Coins,
+  Sparkles
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { isSameDay, subDays } from "date-fns";
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle,
+  DialogDescription
+} from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { isSameDay, subDays, format } from "date-fns";
+import { decrypt } from "@/lib/crypto";
 import { useTheme } from "next-themes";
 
 const THEME_STYLES: Record<string, string> = {
@@ -35,7 +58,7 @@ interface Fish {
 }
 
 export default function GardenPage() {
-  const { user } = useAuth();
+  const { user, encryptionKey } = useAuth();
   const { appearance } = useSettings();
   const { resolvedTheme } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -55,6 +78,59 @@ export default function GardenPage() {
     { id: 2, type: 2, top: "60%", left: "70%", rotation: -30, scale: 0.8 + Math.random() * 0.4 },
     { id: 3, type: 2, top: "50%", left: "20%", rotation: 120, scale: 0.8 + Math.random() * 0.4 },
   ]);
+
+  // Wishing Coin State
+  const [coins, setCoins] = useState(2);
+  const [isCoinTossing, setIsCoinTossing] = useState(false);
+  const [memoryToShow, setMemoryToShow] = useState<any>(null);
+  const [moods, setMoods] = useState<any[]>([]);
+  const [isFallback, setIsFallback] = useState(false);
+  const [allEntries, setAllEntries] = useState<any[]>([]);
+
+  // Lily State
+  const [activeLilyId, setActiveLilyId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const today = format(new Date(), "yyyy-MM-dd");
+    const stored = localStorage.getItem("garden_coins");
+    if (stored) {
+      const { date, count } = JSON.parse(stored);
+      if (date === today) {
+        setCoins(count);
+      } else {
+        setCoins(2);
+        localStorage.setItem("garden_coins", JSON.stringify({ date: today, count: 2 }));
+      }
+    } else {
+      localStorage.setItem("garden_coins", JSON.stringify({ date: today, count: 2 }));
+    }
+  }, []);
+
+  useEffect(() => {
+    const loadData = async () => {
+      if (!user || !encryptionKey || !user.salt) return;
+      try {
+        const [m, e] = await Promise.all([fetchMoods(), getAllEntries()]);
+        setMoods(m);
+        
+        // Decrypt entries for the wishing coin
+        const decryptedEntries = await Promise.all(e.map(async (entry) => {
+          try {
+            const dTitle = await decrypt(entry.title, encryptionKey, user.salt!);
+            const dContent = await decrypt(entry.content, encryptionKey, user.salt!);
+            return { ...entry, title: dTitle, content: dContent };
+          } catch {
+            return { ...entry, title: "🔒 Decryption Failed", content: "" };
+          }
+        }));
+        
+        setAllEntries(decryptedEntries);
+      } catch (err) {
+        console.error("Failed to load garden data", err);
+      }
+    };
+    loadData();
+  }, [user, encryptionKey]);
 
   useEffect(() => {
     const loadStats = async () => {
@@ -173,54 +249,6 @@ export default function GardenPage() {
     return () => clearInterval(intervalId);
   }, [fish]);
 
-  const lilies = useMemo(() => {
-    if (streak === 0) return [];
-    
-    const count = Math.ceil(streak / 8);
-    const result = [];
-    
-    const seed = (s: number) => {
-      let value = s;
-      return () => {
-        value = (value * 16807) % 2147483647;
-        return (value - 1) / 2147483646;
-      };
-    };
-
-    const random = seed(42);
-
-    for (let i = 0; i < count; i++) {
-      let stage = 8;
-      if (i === count - 1) {
-        stage = ((streak - 1) % 8) + 1;
-      }
-      
-      result.push({
-        id: i,
-        stage,
-        top: `${10 + random() * 80}%`,
-        left: `${10 + random() * 80}%`,
-        scale: 0.6 + random() * 0.4,
-        delay: random() * 2,
-        rotationDuration: 4 + random() * 2
-      });
-    }
-    return result;
-  }, [streak]);
-
-  const handlePondClick = useCallback((e: React.MouseEvent) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    const newRipple = { id: Date.now(), x, y };
-    setRipples(prev => [...prev, newRipple]);
-    
-    setTimeout(() => {
-      setRipples(prev => prev.filter(r => r.id !== newRipple.id));
-    }, 2000);
-  }, []);
-
   const toggleMusic = () => {
     if (audioRef.current) {
       if (isPlaying) {
@@ -250,6 +278,105 @@ export default function GardenPage() {
       const ids = splashRipples.map(r => r.id);
       setRipples(prev => prev.filter(r => !ids.includes(r.id)));
     }, 1500); // Faster ripples
+  }, []);
+
+  // Wishing Coin Logic
+  const throwCoin = useCallback(async (moodId: number) => {
+    if (coins <= 0 || isCoinTossing) return;
+    
+    if (allEntries.length === 0) {
+      alert("The pond is quiet. Write some entries first to recall memories!");
+      return;
+    }
+
+    setIsCoinTossing(true);
+    const newCount = coins - 1;
+    setCoins(newCount);
+    localStorage.setItem("garden_coins", JSON.stringify({ 
+      date: format(new Date(), "yyyy-MM-dd"), 
+      count: newCount 
+    }));
+
+    // Toss animation timing
+    setTimeout(() => {
+      triggerSplash("50%", "50%");
+      
+      const moodEntries = allEntries.filter(e => e.mood_id === moodId);
+      let selected;
+      if (moodEntries.length > 0) {
+        selected = moodEntries[Math.floor(Math.random() * moodEntries.length)];
+        setIsFallback(false);
+      } else {
+        selected = allEntries[Math.floor(Math.random() * allEntries.length)];
+        setIsFallback(true);
+      }
+      
+      setMemoryToShow(selected);
+      setIsCoinTossing(false);
+    }, 2000);
+  }, [coins, isCoinTossing, allEntries, triggerSplash]);
+
+  // Jump Reset
+  useEffect(() => {
+    const hasJumping = fish.some(f => f.isJumping);
+    if (!hasJumping) return;
+
+    const timer = setTimeout(() => {
+      setFish(prev => prev.map(f => ({ ...f, isJumping: false })));
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [fish]);
+
+  const lilies = useMemo(() => {
+    // Original logic: Show lilies based on streak, 1 every 8 days
+    let count = 0;
+    if (totalEntries > 0) {
+      count = Math.max(1, Math.ceil(streak / 8));
+    }
+    
+    if (count === 0) return [];
+    
+    const result = [];
+    const seed = (s: number) => {
+      let value = s;
+      return () => {
+        value = (value * 16807) % 2147483647;
+        return (value - 1) / 2147483646;
+      };
+    };
+
+    const random = seed(42);
+
+    for (let i = 0; i < count; i++) {
+      let stage = 8;
+      if (i === count - 1) {
+        stage = ((streak - 1) % 8) + 1;
+      }
+      
+      result.push({
+        id: i,
+        stage,
+        top: `${20 + random() * 60}%`,
+        left: `${20 + random() * 60}%`,
+        scale: 0.6 + random() * 0.4,
+        delay: random() * 2,
+        rotationDuration: 4 + random() * 2
+      });
+    }
+    return result;
+  }, [streak, totalEntries]);
+
+  const handlePondClick = useCallback((e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    const newRipple = { id: Date.now(), x, y };
+    setRipples(prev => [...prev, newRipple]);
+    
+    setTimeout(() => {
+      setRipples(prev => prev.filter(r => r.id !== newRipple.id));
+    }, 2000);
   }, []);
 
   const isDarkMode = resolvedTheme === "dark";
@@ -325,8 +452,51 @@ export default function GardenPage() {
           >
             {isPlaying ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
           </Button>
-        </div>
 
+          {/* Wishing Coin Button */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                disabled={coins === 0 || isCoinTossing}
+                className="h-10 w-10 bg-white/50 dark:bg-zinc-950/50 backdrop-blur-md text-amber-500 hover:bg-white dark:hover:bg-zinc-950 rounded-xl shadow-sm border border-zinc-100/50 dark:border-zinc-900/50 relative overflow-hidden"
+              >
+                <Coins className={cn("h-5 w-5", isCoinTossing && "animate-bounce")} />
+                {coins > 0 && (
+                  <span className="absolute bottom-0 right-0 bg-amber-500 text-white text-[10px] px-1 rounded-tl-md font-bold">
+                    {coins}
+                  </span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-3 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl" side="right" align="start">
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <h4 className="font-medium leading-none flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-amber-500" />
+                    Make a Wish
+                  </h4>
+                  <p className="text-sm text-zinc-500">
+                    Throw a coin and choose a mood to recall a past memory.
+                  </p>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {moods.map(mood => (
+                    <button
+                      key={mood.id}
+                      onClick={() => throwCoin(mood.id)}
+                      className="flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                    >
+                      <span className="text-xl">{mood.emoji}</span>
+                      <span className="text-[10px] opacity-60 truncate w-full text-center">{mood.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+          </div>
         {/* Floating UI Elements */}
         <div className="relative z-10 flex flex-col h-full pointer-events-none">
           {/* Stats Bar (Top) */}
@@ -470,6 +640,29 @@ export default function GardenPage() {
           ))}
         </div>
 
+        {/* Wishing Coin Animation */}
+        <AnimatePresence>
+          {isCoinTossing && (
+            <motion.div
+              initial={{ top: "10%", left: "10%", scale: 1, rotate: 0 }}
+              animate={{ 
+                top: ["10%", "30%", "50%"], 
+                left: ["10%", "30%", "50%"],
+                scale: [1, 2, 0.8],
+                rotate: [0, 720, 1440]
+              }}
+              exit={{ opacity: 0, scale: 0 }}
+              transition={{ duration: 2, ease: "easeInOut" }}
+              className="absolute z-50 w-10 h-10 bg-gradient-to-tr from-amber-600 to-amber-300 rounded-full border-2 border-amber-100 shadow-[0_0_20px_rgba(251,191,36,0.6)] flex items-center justify-center pointer-events-none"
+              style={{ transform: "translate(-50%, -50%)" }}
+            >
+              <div className="w-6 h-6 border-2 border-amber-400/50 rounded-full flex items-center justify-center">
+                <Sparkles className="h-3 w-3 text-white" />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Lilies Layer */}
         <div className="absolute inset-0 z-10 pointer-events-none">
           {lilies.map((lily) => (
@@ -512,6 +705,57 @@ export default function GardenPage() {
           ))}
         </div>
       </main>
+
+      {/* Memory Dialog */}
+      <Dialog open={!!memoryToShow} onOpenChange={(open) => !open && setMemoryToShow(null)}>
+        <DialogContent className="sm:max-w-[460px] bg-white/80 dark:bg-zinc-950/80 backdrop-blur-3xl border-none rounded-[2.5rem] overflow-hidden shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] p-0">
+          <div className="p-10">
+            <div className="flex flex-col items-center text-center mb-8">
+              <motion.div 
+                initial={{ scale: 0.5, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="w-16 h-16 flex items-center justify-center bg-zinc-100 dark:bg-zinc-900 rounded-full mb-4 text-3xl shadow-inner"
+              >
+                {memoryToShow?.mood_emoji || "✨"}
+              </motion.div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-zinc-400 mb-1">
+                {memoryToShow?.created_at && format(new Date(memoryToShow.created_at), "MMMM d, yyyy")}
+              </p>
+              <h2 className="text-xl font-medium text-zinc-900 dark:text-zinc-100 italic">
+                {isFallback ? "A Whispered Echo" : "Memory Found"}
+              </h2>
+            </div>
+
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="space-y-4"
+            >
+              <h3 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">
+                {memoryToShow?.title || "Untitled"}
+              </h3>
+              
+              <div className="max-h-[220px] overflow-y-auto pr-2 custom-scrollbar text-left">
+                <div 
+                  className="text-zinc-500 dark:text-zinc-400 leading-relaxed font-light text-sm"
+                  dangerouslySetInnerHTML={{ __html: memoryToShow?.content || "" }}
+                />
+              </div>
+
+              <div className="flex justify-center pt-8">
+                <Button 
+                  onClick={() => setMemoryToShow(null)}
+                  variant="ghost"
+                  className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 font-bold uppercase tracking-widest text-[10px] hover:bg-transparent transition-all"
+                >
+                  Return to Pond
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <style jsx global>{`
         .image-pixelated {

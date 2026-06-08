@@ -1,6 +1,6 @@
 "use server";
 
-import { createEntry, updateEntry, getEntries, getEntry, softDeleteEntry, hardDeleteEntry, archiveEntry, getMoods, searchEntries } from "@/lib/journal";
+import { createEntry, updateEntry, getEntries, getEntry, softDeleteEntry, hardDeleteEntry, archiveEntry, getMoods, createMood, searchEntries } from "@/lib/journal";
 import { revalidatePath } from "next/cache";
 import { getSession } from "./auth";
 
@@ -53,6 +53,14 @@ export async function toggleArchive(id: number, archived: boolean) {
 export async function fetchMoods() {
   const session = await getSession();
   return getMoods(session?.userId);
+}
+
+export async function saveMood(name: string, emoji: string) {
+  const session = await getSession();
+  if (!session) throw new Error("Unauthorized");
+
+  await createMood(name, emoji, session.userId);
+  revalidatePath("/");
 }
 
 export async function restoreEntry(id: number) {

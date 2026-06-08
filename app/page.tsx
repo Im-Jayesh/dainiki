@@ -4,9 +4,9 @@ import { useAuth } from "@/contexts/auth-context";
 import { useSettings } from "@/contexts/settings-context";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Editor } from "@/components/editor";
-import { saveEntry, getAllEntries, deleteEntry, fetchMoods } from "@/lib/actions/journal";
+import { saveEntry, getAllEntries, deleteEntry, fetchMoods, saveMood } from "@/lib/actions/journal";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Plus, Hash, Smile, Sparkles, AlertCircle, Zap, X, Trash2, Download, Archive, ArchiveRestore, ChevronRight, LayoutDashboard, Palette, Bot, ShieldCheck } from "lucide-react";
+import { Search, Plus, Hash, Smile, Sparkles, AlertCircle, Zap, X, Trash2, Download, Archive, ArchiveRestore, ChevronRight, LayoutDashboard, Palette, Bot, ShieldCheck, Check } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -70,6 +70,10 @@ export default function JournalPage() {
   const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
   const [quickEntryContent, setQuickEntryContent] = useState("");
   
+  const [isAddingMood, setIsAddingMood] = useState(false);
+  const [newMoodName, setNewMoodName] = useState("");
+  const [newMoodEmoji, setNewMoodEmoji] = useState("😊");
+  
   const lastSavedRef = useRef({ title: "", content: "", moodId: undefined as number | undefined });
 
   const handleSelect = useCallback((entry: Entry) => {
@@ -82,6 +86,20 @@ export default function JournalPage() {
     setAiSuggestion(null);
     lastSavedRef.current = { title: entry.title || "", content: entry.content || "", moodId: entry.mood_id };
   }, []);
+
+  const handleCreateMood = async () => {
+    if (!newMoodName.trim() || !newMoodEmoji.trim()) return;
+    try {
+      await saveMood(newMoodName.trim(), newMoodEmoji.trim());
+      const m = await fetchMoods();
+      setMoods(m as unknown as Mood[]);
+      setIsAddingMood(false);
+      setNewMoodName("");
+      setNewMoodEmoji("😊");
+    } catch (err) {
+      console.error("Failed to create mood:", err);
+    }
+  };
 
   const loadEntries = useCallback(async () => {
     if (!user || !encryptionKey || !user.salt) return;
@@ -428,14 +446,65 @@ export default function JournalPage() {
                           <span className="max-w-[80px] truncate">{selectedMood ? `${selectedMood.emoji} ${selectedMood.name}` : "Set Mood"}</span>
                         </PopoverTrigger>
                         <PopoverContent className="w-64 p-3 rounded-xl border-zinc-100 dark:border-zinc-900 shadow-2xl" align="start">
-                          <div className="grid grid-cols-3 gap-2">
-                            {moods.map((m) => (
-                              <button key={m.id} onClick={() => { setMoodId(m.id); }} className={cn("flex flex-col items-center gap-1.5 p-3 rounded-xl transition-all", moodId === m.id ? "bg-zinc-100 dark:bg-zinc-900" : "hover:bg-zinc-50 dark:hover:bg-zinc-900/50")}>
-                                <span className="text-xl">{m.emoji}</span>
-                                <span className="text-[10px] font-medium text-zinc-500">{m.name}</span>
-                              </button>
-                            ))}
-                          </div>
+                          <AnimatePresence mode="wait">
+                            {isAddingMood ? (
+                              <motion.div key="add-mood" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-4 p-1">
+                                <div className="flex items-center gap-3">
+                                  <div className="space-y-1">
+                                    <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Icon</p>
+                                    <div className="h-10 w-10 rounded-xl bg-zinc-50 dark:bg-zinc-900 flex items-center justify-center text-xl border border-zinc-100 dark:border-zinc-800">
+                                      <input 
+                                        value={newMoodEmoji}
+                                        onChange={(e) => setNewMoodEmoji(e.target.value)}
+                                        className="w-full h-full bg-transparent border-none p-0 text-center focus:ring-0"
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="flex-1 space-y-1">
+                                    <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Mood Name</p>
+                                    <input 
+                                      autoFocus
+                                      value={newMoodName}
+                                      onChange={(e) => setNewMoodName(e.target.value)}
+                                      placeholder="e.g. Melodic"
+                                      className="w-full bg-transparent border-none p-0 h-10 text-sm focus:ring-0 placeholder:text-zinc-300 dark:placeholder:text-zinc-700"
+                                    />
+                                  </div>
+                                </div>
+                                
+                                <div className="space-y-2">
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Quick Emoji</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {["🌿", "✨", "🙏", "🚀", "😴", "🎨", "🌈", "🧘", "🎶"].map(e => (
+                                      <button key={e} onClick={() => setNewMoodEmoji(e)} className={cn("h-8 w-8 rounded-lg flex items-center justify-center text-lg transition-all", newMoodEmoji === e ? "bg-zinc-100 dark:bg-zinc-800 scale-110" : "hover:bg-zinc-50 dark:hover:bg-zinc-900")}>
+                                        {e}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                <div className="flex gap-2 pt-2">
+                                  <Button variant="ghost" className="flex-1 h-9 rounded-lg text-[10px] font-bold uppercase tracking-wider" onClick={() => setIsAddingMood(false)}>Cancel</Button>
+                                  <Button className="flex-1 h-9 rounded-lg text-[10px] font-bold uppercase tracking-wider" onClick={handleCreateMood} disabled={!newMoodName.trim()}>Save</Button>
+                                </div>
+                              </motion.div>
+                            ) : (
+                              <motion.div key="mood-list" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="space-y-3">
+                                <div className="grid grid-cols-3 gap-2">
+                                  {moods.map((m) => (
+                                    <button key={m.id} onClick={() => { setMoodId(m.id); }} className={cn("flex flex-col items-center gap-1.5 p-3 rounded-xl transition-all", moodId === m.id ? "bg-zinc-100 dark:bg-zinc-900" : "hover:bg-zinc-50 dark:hover:bg-zinc-900/50")}>
+                                      <span className="text-xl">{m.emoji}</span>
+                                      <span className="text-[10px] font-medium text-zinc-500">{m.name}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                                <Separator className="bg-zinc-100 dark:bg-zinc-900" />
+                                <Button variant="ghost" className="w-full h-9 rounded-lg text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100" onClick={() => setIsAddingMood(true)}>
+                                  <Plus className="h-3.5 w-3.5 mr-2" /> Add Custom Mood
+                                </Button>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </PopoverContent>
                       </Popover>
                     </div>
