@@ -41,7 +41,10 @@ export async function initDb() {
     { name: 'is_verified', type: 'INTEGER DEFAULT 0' },
     { name: 'otp_code', type: 'TEXT' },
     { name: 'master_key_password', type: 'TEXT' },
-    { name: 'master_key_pin', type: 'TEXT' }
+    { name: 'master_key_pin', type: 'TEXT' },
+    { name: 'is_banned', type: 'INTEGER DEFAULT 0' },
+    { name: 'invite_token', type: 'TEXT' },
+    { name: 'invite_expires', type: 'TEXT' }
   ];
 
   for (const col of userColumns) {
@@ -51,6 +54,20 @@ export async function initDb() {
       // Column probably already exists
     }
   }
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS echoes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sender_id INTEGER NOT NULL,
+      receiver_id INTEGER,
+      content TEXT NOT NULL,
+      reaction_emoji TEXT,
+      is_anonymized INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (sender_id) REFERENCES users(id),
+      FOREIGN KEY (receiver_id) REFERENCES users(id)
+    );
+  `);
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS ai_usage_logs (

@@ -55,6 +55,8 @@ export async function updateVaultSecurity(data: {
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import nodemailer from "nodemailer";
+import bcrypt from "bcryptjs";
+import crypto from "crypto";
 
 const SESSION_COOKIE = "dainiki_session";
 
@@ -146,10 +148,70 @@ export async function verifyOtp(username: string, code: string) {
     });
     
     return { success: true };
-  }
-  
-  return { success: false, error: "Invalid verification code" };
-}
+    }
+    return { success: false, error: "Invalid verification code" };
+    }
+
+    export async function acceptInvite(token: string, data: { 
+    username: string; 
+    password: string; 
+    pin: string; 
+    secretQuestion?: string; 
+    secretAnswer?: string;
+    encryptionSalt?: string;
+    master_key_password?: string;
+    master_key_pin?: string;
+    }) {
+    const result = await db.execute({
+      sql: "SELECT id, email FROM users WHERE invite_token = ? AND invite_expires > CURRENT_TIMESTAMP",
+      args: [token]
+    });
+
+    const user = result.rows[0];
+    if (!user) {
+      throw new Error("Invalid or expired invite token");
+    }
+
+    if (await userExists(data.username) && data.username.toLowerCase() !== (user.username as string)?.toLowerCase()) {
+       throw new Error("Username already taken");
+    }
+
+    const passwordHash = bcrypt.hashSync(data.password, 10);
+    const pinHash = data.pin ? bcrypt.hashSync(data.pin, 10) : null;
+    const secretAnswerHash = data.secretAnswer ? bcrypt.hashSync(data.secretAnswer, 10) : null;
+    const recoveryKey = crypto.randomBytes(16).toString("hex");
+
+    await db.execute({
+      sql: `UPDATE users SET 
+        username = ?, password_hash = ?, pin_hash = ?, recovery_key = ?, 
+        secret_question = ?, secret_answer_hash = ?, encryption_salt = ?, 
+        master_key_password = ?, master_key_pin = ?, is_verified = 1, 
+        invite_token = NULL, invite_expires = NULL
+        WHERE id = ?`,
+      args: [
+        data.username,
+        passwordHash,
+        pinHash,
+        recoveryKey,
+        data.secretQuestion || null,
+        secretAnswerHash,
+        data.encryptionSalt || null,
+        data.master_key_password || null,
+        data.master_key_pin || null,
+        user.id
+        ]
+    });
+
+    // Auto login
+    (await cookies()).set(SESSION_COOKIE, JSON.stringify({ userId: Number(user.id), username: data.username, isVerified: true }), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 60 * 60 * 24 * 7
+    });
+
+    return { recoveryKey };
+    }
 
 export async function login(username: string, password: string) {
   const isValid = await verifyPassword(username, password);
@@ -288,6 +350,10 @@ export async function deductAiCredit() {
   return { success: true, remaining: credits - 1 };
 }
 
+import { Client } from "@upstash/qstash";
+
+const qstashClient = process.env.QSTASH_TOKEN ? new Client({ token: process.env.QSTASH_TOKEN }) : null;
+
 export async function updateSettings(settings: any) {
   const session = await getSession();
   if (!session) throw new Error("Unauthorized");
@@ -295,6 +361,71 @@ export async function updateSettings(settings: any) {
   const user = await getUserByUsername(session.username);
   const currentSettings = JSON.parse(user.settings || '{}');
   const mergedSettings = { ...currentSettings, ...settings };
+
+  // QStash Integration for Exact Scheduling
+  if (qstashClient && process.env.NEXT_PUBLIC_APP_URL) {
+    // If they updated reminders, sync with QStash
+    if (settings.reminders !== undefined || settings.timezone !== undefined) {
+      
+      // 1. Delete existing schedule if any
+      if (currentSettings.qstashScheduleId) {
+        try {
+          await qstashClient.schedules.delete(currentSettings.qstashScheduleId);
+        } catch (e) {
+          console.error("[QStash] Failed to delete old schedule:", e);
+        }
+        mergedSettings.qstashScheduleId = null;
+      }
+
+      // 2. Create new schedule if enabled
+      if (mergedSettings.reminders?.enabled && mergedSettings.reminders?.time) {
+        const [h, m] = mergedSettings.reminders.time.split(":");
+        let cron = `${Number(m)} ${Number(h)} * * *`; // Default to the literal hour if tz fails
+        
+        try {
+          // Calculate UTC offset for the given timezone
+          const parts = new Intl.DateTimeFormat('en-US', {
+            timeZone: mergedSettings.timezone || "UTC",
+            timeZoneName: 'shortOffset'
+          }).formatToParts(new Date());
+          
+          const offsetPart = parts.find(p => p.type === 'timeZoneName')?.value; // e.g., "GMT-4" or "GMT+5:30"
+          if (offsetPart && offsetPart !== "GMT") {
+            const sign = offsetPart.includes('-') ? -1 : 1;
+            const timeStr = offsetPart.replace('GMT', '').replace('+', '').replace('-', '');
+            const [offH, offM] = timeStr.split(':').map(Number);
+            
+            // Calculate UTC time
+            let utcM = Number(m) - (sign * (offM || 0));
+            let utcH = Number(h) - (sign * offH);
+            
+            if (utcM < 0) { utcM += 60; utcH -= 1; }
+            if (utcM >= 60) { utcM -= 60; utcH += 1; }
+            utcH = (utcH + 24) % 24;
+
+            cron = `${utcM} ${utcH} * * *`;
+          }
+        } catch (e) {
+          console.error("[QStash] Timezone parsing error:", e);
+        }
+
+        try {
+          const res = await qstashClient.schedules.create({
+            destination: `${process.env.NEXT_PUBLIC_APP_URL}/api/cron/reminders`,
+            cron: cron,
+            body: JSON.stringify({ userId: session.userId }),
+            headers: {
+              "Authorization": `Bearer ${process.env.CRON_SECRET}`,
+              "Content-Type": "application/json"
+            }
+          });
+          mergedSettings.qstashScheduleId = res.scheduleId;
+        } catch (e) {
+          console.error("[QStash] Failed to create schedule:", e);
+        }
+      }
+    }
+  }
 
   await db.execute({
     sql: "UPDATE users SET settings = ? WHERE id = ?",

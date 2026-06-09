@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useSettings } from "@/contexts/settings-context";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { getAllEntries, fetchMoods } from "@/lib/actions/journal";
+import { getEcho, castEcho, reactToEcho, getMyEchoes } from "@/lib/actions/echoes";
 import { Sidebar } from "@/components/sidebar";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -16,24 +17,32 @@ import {
   Eye, 
   EyeOff,
   Coins,
-  Sparkles
+  Sparkles,
+  Send,
+  Heart,
+  MessageCircleHeart,
+  ScrollText,
+  MailOpen
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { 
   Dialog, 
   DialogContent, 
-  DialogHeader, 
+  DialogHeader,
   DialogTitle,
-  DialogDescription
+  DialogDescription,
+  DialogFooter
 } from "@/components/ui/dialog";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
 import { isSameDay, subDays, format } from "date-fns";
 import { decrypt } from "@/lib/crypto";
 import { useTheme } from "next-themes";
+import { toast } from "sonner";
 
 const THEME_STYLES: Record<string, string> = {
   zinc: "text-zinc-900 dark:text-zinc-100",
@@ -46,6 +55,7 @@ interface Ripple {
   id: number;
   x: number;
   y: number;
+  massive?: boolean;
 }
 
 interface Fish {
@@ -55,6 +65,8 @@ interface Fish {
   left: string;
   rotation: number;
   scale: number;
+  direction: number;
+  isJumping: boolean;
 }
 
 export default function GardenPage() {
@@ -72,11 +84,11 @@ export default function GardenPage() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const mainRef = useRef<HTMLElement | null>(null);
 
-  // Fish state - 3 fish for better luck with randomized sizes
+  // Fish state
   const [fish, setFish] = useState<Fish[]>([
-    { id: 1, type: 1, top: "30%", left: "40%", rotation: 45, scale: 0.8 + Math.random() * 0.4 },
-    { id: 2, type: 2, top: "60%", left: "70%", rotation: -30, scale: 0.8 + Math.random() * 0.4 },
-    { id: 3, type: 2, top: "50%", left: "20%", rotation: 120, scale: 0.8 + Math.random() * 0.4 },
+    { id: 1, type: 1, top: "30%", left: "40%", rotation: 0, scale: 0.8 + Math.random() * 0.4, direction: 1, isJumping: false },
+    { id: 2, type: 2, top: "60%", left: "70%", rotation: 0, scale: 0.8 + Math.random() * 0.4, direction: -1, isJumping: false },
+    { id: 3, type: 2, top: "50%", left: "20%", rotation: 0, scale: 0.8 + Math.random() * 0.4, direction: 1, isJumping: false },
   ]);
 
   // Wishing Coin State
@@ -87,8 +99,14 @@ export default function GardenPage() {
   const [isFallback, setIsFallback] = useState(false);
   const [allEntries, setAllEntries] = useState<any[]>([]);
 
-  // Lily State
-  const [activeLilyId, setActiveLilyId] = useState<number | null>(null);
+  // Echoes State
+  const [floatingEcho, setFloatingEcho] = useState<any>(null);
+  const [echoToShow, setEchoToShow] = useState<any>(null);
+  const [isCastingEcho, setIsCastingEcho] = useState(false);
+  const [isAnimatingCast, setIsAnimatingCast] = useState(false);
+  const [newEchoContent, setNewEchoContent] = useState("");
+  const [myEchoes, setMyEchoes] = useState<any[]>([]);
+  const [showMyEchoes, setShowMyEchoes] = useState(false);
 
   useEffect(() => {
     const today = format(new Date(), "yyyy-MM-dd");
@@ -171,6 +189,28 @@ export default function GardenPage() {
     loadStats();
   }, [user]);
 
+  // Load a random echo
+  useEffect(() => {
+    const fetchEcho = async () => {
+      try {
+        const echo = await getEcho();
+        if (echo) {
+          // Give it a random starting position
+          setFloatingEcho({
+            ...echo,
+            top: `${10 + Math.random() * 80}%`,
+            left: `${10 + Math.random() * 80}%`
+          });
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+    // Fetch an echo 5 seconds after load
+    const timer = setTimeout(fetchEcho, 5000);
+    return () => clearTimeout(timer);
+  }, []);
+
   // Automatic random ripples
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
@@ -207,16 +247,23 @@ export default function GardenPage() {
         const nextTop = 10 + Math.random() * 80;
         const nextLeft = 10 + Math.random() * 80;
         
-        // Calculate angle towards next position
+        // Calculate angle towards next position for slight tilt
         const currentTopNum = parseFloat(f.top);
         const currentLeftNum = parseFloat(f.left);
-        const angle = Math.atan2(nextTop - currentTopNum, nextLeft - currentLeftNum) * (180 / Math.PI);
+        
+        const isMovingLeft = nextLeft < currentLeftNum;
+        const direction = isMovingLeft ? -1 : 1;
+        
+        // Gentle up/down tilt based on vertical movement
+        const verticalDiff = nextTop - currentTopNum;
+        const tilt = (verticalDiff * 0.5) * direction; // Tilt up/down
 
         return {
           ...f,
           top: `${nextTop}%`,
           left: `${nextLeft}%`,
-          rotation: angle + 90, // Adjust by 90deg if asset faces up/down
+          rotation: tilt, 
+          direction: direction
         };
       }));
     };
@@ -260,24 +307,36 @@ export default function GardenPage() {
     }
   };
 
-  const triggerSplash = useCallback((left: string, top: string) => {
+  const triggerSplash = useCallback((left: string, top: string, isMassive = false) => {
     if (!mainRef.current) return;
     const { width, height } = mainRef.current.getBoundingClientRect();
     const x = (parseFloat(left) / 100) * width;
     const y = (parseFloat(top) / 100) * height;
 
-    const splashRipples = [
-      { id: Date.now() + Math.random(), x, y },
-      { id: Date.now() + Math.random(), x: x + 10, y: y + 5 },
-      { id: Date.now() + Math.random(), x: x - 5, y: y - 10 },
-    ];
+    let splashRipples: Ripple[] = [];
+
+    if (isMassive) {
+      splashRipples = [
+        { id: Date.now() + Math.random(), x, y, massive: true },
+        { id: Date.now() + Math.random(), x: x + 25, y: y + 15, massive: true },
+        { id: Date.now() + Math.random(), x: x - 25, y: y - 15, massive: true },
+        { id: Date.now() + Math.random(), x: x + 5, y: y + 35, massive: true },
+        { id: Date.now() + Math.random(), x: x - 10, y: y - 25, massive: true },
+      ];
+    } else {
+      splashRipples = [
+        { id: Date.now() + Math.random(), x, y },
+        { id: Date.now() + Math.random(), x: x + 10, y: y + 5 },
+        { id: Date.now() + Math.random(), x: x - 5, y: y - 10 },
+      ];
+    }
 
     setRipples(prev => [...prev, ...splashRipples]);
     
     setTimeout(() => {
       const ids = splashRipples.map(r => r.id);
       setRipples(prev => prev.filter(r => !ids.includes(r.id)));
-    }, 1500); // Faster ripples
+    }, isMassive ? 3500 : 1500); // Massive ripples last longer
   }, []);
 
   // Wishing Coin Logic
@@ -316,19 +375,53 @@ export default function GardenPage() {
     }, 2000);
   }, [coins, isCoinTossing, allEntries, triggerSplash]);
 
-  // Jump Reset
-  useEffect(() => {
-    const hasJumping = fish.some(f => f.isJumping);
-    if (!hasJumping) return;
+  // Echoes Logic
+  const handleCastEcho = async () => {
+    if (!newEchoContent.trim()) return toast.error("Echo cannot be empty.");
+    try {
+      await castEcho(newEchoContent);
+      setIsCastingEcho(false);
+      setNewEchoContent("");
+      setIsAnimatingCast(true);
+      
+      // Bottle hits water
+      setTimeout(() => {
+        triggerSplash("50%", "50%", true);
+      }, 900); // 900ms matches the drop phase in the CSS animation
 
-    const timer = setTimeout(() => {
-      setFish(prev => prev.map(f => ({ ...f, isJumping: false })));
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [fish]);
+      // Animation finishes, bottle sinks
+      setTimeout(() => {
+        setIsAnimatingCast(false);
+        toast.success("Echo cast into the void. ✨");
+      }, 3000); // 3000ms matches total animation duration
+    } catch (e: any) {
+      toast.error(e.message || "Failed to cast echo");
+    }
+  };
+
+  const handleReactToEcho = async (emoji: string) => {
+    if (!echoToShow) return;
+    try {
+      await reactToEcho(echoToShow.id, emoji);
+      toast.success(`Reacted with ${emoji}`);
+      setEchoToShow(null);
+      setFloatingEcho(null); // remove it from the pond
+    } catch (e: any) {
+      toast.error("Failed to send reaction.");
+    }
+  };
+
+  const handleOpenMyEchoes = async () => {
+    try {
+      const data = await getMyEchoes();
+      setMyEchoes(data);
+      setShowMyEchoes(true);
+    } catch (e) {
+      toast.error("Failed to load your echoes.");
+    }
+  };
 
   const lilies = useMemo(() => {
-    // Original logic: Show lilies based on streak, 1 every 8 days
     let count = 0;
     if (totalEntries > 0) {
       count = Math.max(1, Math.ceil(streak / 8));
@@ -453,22 +546,41 @@ export default function GardenPage() {
             {isPlaying ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
           </Button>
 
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="h-10 w-10 bg-white/50 dark:bg-zinc-950/50 backdrop-blur-md text-pink-500 hover:bg-white dark:hover:bg-zinc-950 rounded-xl shadow-sm border border-zinc-100/50 dark:border-zinc-900/50 relative overflow-hidden"
+            onClick={() => setIsCastingEcho(true)}
+            title="Cast an Echo"
+          >
+            <Send className="h-4 w-4" />
+          </Button>
+
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="h-10 w-10 bg-white/50 dark:bg-zinc-950/50 backdrop-blur-md text-purple-500 hover:bg-white dark:hover:bg-zinc-950 rounded-xl shadow-sm border border-zinc-100/50 dark:border-zinc-900/50 relative overflow-hidden"
+            onClick={handleOpenMyEchoes}
+            title="My Echoes"
+          >
+            <ScrollText className="h-4 w-4" />
+          </Button>
+
           {/* Wishing Coin Button */}
           <Popover>
-            <PopoverTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                disabled={coins === 0 || isCoinTossing}
-                className="h-10 w-10 bg-white/50 dark:bg-zinc-950/50 backdrop-blur-md text-amber-500 hover:bg-white dark:hover:bg-zinc-950 rounded-xl shadow-sm border border-zinc-100/50 dark:border-zinc-900/50 relative overflow-hidden"
-              >
-                <Coins className={cn("h-5 w-5", isCoinTossing && "animate-bounce")} />
-                {coins > 0 && (
-                  <span className="absolute bottom-0 right-0 bg-amber-500 text-white text-[10px] px-1 rounded-tl-md font-bold">
-                    {coins}
-                  </span>
-                )}
-              </Button>
+            <PopoverTrigger
+              disabled={coins === 0 || isCoinTossing}
+              className={cn(
+                buttonVariants({ variant: "ghost", size: "icon" }),
+                "h-10 w-10 bg-white/50 dark:bg-zinc-950/50 backdrop-blur-md text-amber-500 hover:bg-white dark:hover:bg-zinc-950 rounded-xl shadow-sm border border-zinc-100/50 dark:border-zinc-900/50 relative overflow-hidden"
+              )}
+            >
+              <Coins className={cn("h-5 w-5", isCoinTossing && "animate-bounce")} />
+              {coins > 0 && (
+                <span className="absolute bottom-0 right-0 bg-amber-500 text-white text-[10px] px-1 rounded-tl-md font-bold">
+                  {coins}
+                </span>
+              )}
             </PopoverTrigger>
             <PopoverContent className="w-64 p-3 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl" side="right" align="start">
               <div className="space-y-3">
@@ -496,7 +608,8 @@ export default function GardenPage() {
               </div>
             </PopoverContent>
           </Popover>
-          </div>
+        </div>
+
         {/* Floating UI Elements */}
         <div className="relative z-10 flex flex-col h-full pointer-events-none">
           {/* Stats Bar (Top) */}
@@ -584,9 +697,9 @@ export default function GardenPage() {
               <motion.div
                 key={ripple.id}
                 initial={{ scale: 0, opacity: 0.5 }}
-                animate={{ scale: 4, opacity: 0 }}
+                animate={{ scale: ripple.massive ? 12 : 4, opacity: 0 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 2, ease: "easeOut" }}
+                transition={{ duration: ripple.massive ? 3.5 : 2, ease: "easeOut" }}
                 className="absolute w-32 h-32 border-2 border-white/30 rounded-full"
                 style={{ 
                   left: ripple.x - 64, 
@@ -602,11 +715,12 @@ export default function GardenPage() {
           {fish.map((f) => (
             <motion.div
               key={`fish-${f.id}`}
+              initial={{ top: f.top, left: f.left, scale: 0, opacity: 0 }}
               animate={{ 
                 top: f.top, 
                 left: f.left,
-                rotate: f.rotation,
-                scale: f.scale 
+                scale: f.scale,
+                opacity: 1
               }}
               whileHover={{
                 x: [0, -2, 2, -2, 2, 0],
@@ -616,18 +730,22 @@ export default function GardenPage() {
               onMouseEnter={() => triggerSplash(f.left, f.top)}
               transition={{ 
                 duration: 8, // Slower, more natural swim
-                ease: "easeInOut"
+                ease: "easeInOut",
+                scale: { duration: 2, ease: "easeOut" },
+                opacity: { duration: 2, ease: "easeOut" }
               }}
               className="absolute w-12 h-12 lg:w-16 lg:h-16 pointer-events-auto cursor-pointer"
               style={{ transform: "translate(-50%, -50%)" }}
             >
+              {/* Fish Sprite */}
               <motion.img 
                 src={`/pond-assets/ponds/fish-${f.type}.png`}
                 alt="Swimming Fish"
                 animate={{ 
                   x: [0, 1, -1, 0],
                   y: [0, -0.5, 0.5, 0],
-                  rotate: [0, 3, -3, 0] // Subtle swimming wiggle
+                  rotate: [f.rotation, f.rotation + 3, f.rotation - 3, f.rotation], // Subtle swimming wiggle
+                  scaleX: f.direction
                 }}
                 transition={{
                   duration: 2.5,
@@ -635,6 +753,19 @@ export default function GardenPage() {
                   ease: "easeInOut"
                 }}
                 className="w-full h-full object-contain image-pixelated opacity-80"
+              />
+              {/* Bubbles behind fish */}
+              <motion.div
+                animate={{ opacity: [0, 0.8, 0], scale: [0.5, 1.2, 1.5], y: [0, -20, -30] }}
+                transition={{ duration: 3, repeat: Infinity, ease: "easeOut", delay: f.id * 0.5 }}
+                className="absolute top-1/2 left-1/2 w-1.5 h-1.5 rounded-full border border-white/40 bg-white/10"
+                style={{ transform: `translate(-50%, -50%) translateX(${f.direction * -20}px)` }}
+              />
+              <motion.div
+                animate={{ opacity: [0, 0.6, 0], scale: [0.3, 1, 1.2], y: [0, -15, -25], x: [0, 5, -5] }}
+                transition={{ duration: 2.5, repeat: Infinity, ease: "easeOut", delay: (f.id * 0.5) + 1 }}
+                className="absolute top-1/2 left-1/2 w-1 h-1 rounded-full border border-white/30 bg-white/10"
+                style={{ transform: `translate(-50%, -50%) translateX(${f.direction * -15}px)` }}
               />
             </motion.div>
           ))}
@@ -659,6 +790,73 @@ export default function GardenPage() {
               <div className="w-6 h-6 border-2 border-amber-400/50 rounded-full flex items-center justify-center">
                 <Sparkles className="h-3 w-3 text-white" />
               </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Floating Echo (Bottle - Receiver) */}
+        <AnimatePresence>
+          {floatingEcho && (
+            <motion.div
+              initial={{ scale: 0, opacity: 0, y: 20 }}
+              animate={{ 
+                scale: 1, 
+                opacity: 1, 
+                y: [0, -10, 0],
+                rotate: [-5, 5, -5]
+              }}
+              exit={{ scale: 0, opacity: 0 }}
+              transition={{
+                y: { duration: 3, repeat: Infinity, ease: "easeInOut" },
+                rotate: { duration: 4, repeat: Infinity, ease: "easeInOut" },
+                opacity: { duration: 1 },
+                scale: { duration: 1, type: "spring" }
+              }}
+              className="absolute z-20 pointer-events-auto cursor-pointer flex flex-col items-center gap-2 group"
+              style={{ top: floatingEcho.top, left: floatingEcho.left }}
+              onClick={() => setEchoToShow(floatingEcho)}
+            >
+              <div className="relative w-16 h-16 group-hover:scale-110 transition-transform flex items-center justify-center">
+                <div className="absolute inset-0 bg-blue-400/20 rounded-full blur-xl animate-pulse" />
+                <img src="/bottle.png" alt="Message in a bottle" className="w-12 h-12 object-contain drop-shadow-lg relative z-10" />
+              </div>
+              <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-800 dark:text-white bg-white/50 dark:bg-black/50 px-2 py-0.5 rounded-full backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                An Echo
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Cast Echo Animation (Sender) */}
+        <AnimatePresence>
+          {isAnimatingCast && (
+            <motion.div
+              className="absolute z-[25] pointer-events-none"
+              style={{ top: "-10%", left: "50%", transform: "translate(-50%, -50%)" }}
+              animate={{ 
+                top: ["-10%", "50%", "50%", "55%"], 
+                rotate: [-20, 10, -5, 0],
+                scale: [1, 1, 0.8, 0],
+                opacity: [1, 1, 0.8, 0]
+              }}
+              transition={{ 
+                duration: 3, 
+                times: [0, 0.3, 0.4, 1], // 0-0.3: fall, 0.3: hit (splash), 0.3-1: sink
+                ease: "easeInOut" 
+              }}
+            >
+              <img src="/bottle.png" alt="Casting Echo" className="w-16 h-16 object-contain drop-shadow-2xl" />
+              {/* Bubbles going up as bottle goes down */}
+              <motion.div
+                initial={{ opacity: 0, y: 0 }}
+                animate={{ opacity: [0, 1, 0], y: -50 }}
+                transition={{ duration: 1.5, delay: 1 }}
+                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-2"
+              >
+                <div className="w-2 h-2 rounded-full border border-white/50" />
+                <div className="w-3 h-3 rounded-full border border-white/50 -translate-y-2" />
+                <div className="w-1.5 h-1.5 rounded-full border border-white/50 translate-y-1" />
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -757,6 +955,113 @@ export default function GardenPage() {
         </DialogContent>
       </Dialog>
 
+      {/* View Echo Dialog */}
+      <Dialog open={!!echoToShow} onOpenChange={(open) => !open && setEchoToShow(null)}>
+        <DialogContent className="sm:max-w-[425px] bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-[2rem] shadow-2xl p-0 overflow-hidden">
+          <div className="p-8">
+            <DialogHeader className="mb-6">
+              <DialogTitle className="flex items-center justify-center gap-2 text-2xl font-serif italic text-zinc-900 dark:text-zinc-100">
+                <MessageCircleHeart className="h-6 w-6 text-pink-500" />
+                An Echo from the Void
+              </DialogTitle>
+            </DialogHeader>
+            <div className="py-6 px-4 text-center bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-100 dark:border-zinc-800 mb-8">
+              <p className="text-lg font-medium text-zinc-800 dark:text-zinc-200 leading-relaxed italic">
+                "{echoToShow?.content}"
+              </p>
+            </div>
+            <div>
+              <p className="text-center text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-4">React to this echo</p>
+              <div className="flex flex-wrap justify-center gap-3">
+                {["❤️", "🙏", "✨", "🫂", "🌟"].map((emoji) => (
+                  <button
+                    key={emoji}
+                    onClick={() => handleReactToEcho(emoji)}
+                    className="h-14 w-14 flex items-center justify-center bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 rounded-2xl transition-all border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 shadow-sm"
+                  >
+                    <span className="text-2xl drop-shadow-sm">{emoji}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cast Echo Dialog */}
+      <Dialog open={isCastingEcho} onOpenChange={setIsCastingEcho}>
+        <DialogContent className="sm:max-w-[425px] bg-white/90 dark:bg-zinc-950/90 backdrop-blur-2xl border border-white/20 dark:border-zinc-800/50 rounded-[2rem] shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl font-serif italic text-zinc-800 dark:text-zinc-200">
+              <Send className="h-5 w-5 text-pink-500" />
+              Cast an Echo
+            </DialogTitle>
+            <DialogDescription className="text-zinc-500">
+              Write a short, anonymous thought. It will float in the pond for others to find. It is not encrypted with your personal key.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Textarea 
+              placeholder="What's on your mind right now?"
+              value={newEchoContent}
+              onChange={e => setNewEchoContent(e.target.value)}
+              className="resize-none h-32 bg-white/50 dark:bg-zinc-900/50 border-zinc-200/50 dark:border-zinc-800/50 rounded-xl placeholder:text-zinc-400 focus-visible:ring-pink-500/50"
+              maxLength={500}
+            />
+            <p className="text-right text-[10px] text-zinc-400 mt-2 font-medium">{newEchoContent.length}/500</p>
+          </div>
+          <DialogFooter>
+            <Button className="w-full h-12 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-bold tracking-widest uppercase text-xs shadow-lg shadow-pink-500/20" onClick={handleCastEcho}>
+              Cast into the Void
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* My Echoes Dialog */}
+      <Dialog open={showMyEchoes} onOpenChange={setShowMyEchoes}>
+        <DialogContent className="sm:max-w-[500px] bg-white/90 dark:bg-zinc-950/90 backdrop-blur-2xl border border-white/20 dark:border-zinc-800/50 rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+          <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
+            <DialogTitle className="flex items-center gap-2 text-xl font-serif italic text-zinc-800 dark:text-zinc-200">
+              <ScrollText className="h-5 w-5 text-purple-500" />
+              Your Echoes
+            </DialogTitle>
+            <DialogDescription className="text-zinc-500">
+              Thoughts you have cast into the void and the reactions they received.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto px-6 py-2 space-y-4 custom-scrollbar">
+            {myEchoes.length === 0 ? (
+              <div className="text-center py-12 text-zinc-400">
+                <p className="font-serif italic text-lg mb-2">The water is still.</p>
+                <p className="text-xs uppercase tracking-widest">You haven't cast any echoes yet.</p>
+              </div>
+            ) : (
+              myEchoes.map(echo => (
+                <div key={echo.id} className="p-4 bg-white/50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-100 dark:border-zinc-800 shadow-sm relative overflow-hidden group">
+                  <p className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed pr-8">
+                    "{echo.content}"
+                  </p>
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-400 mt-3">
+                    {format(new Date(echo.created_at), "MMM d, yyyy")}
+                  </p>
+                  {echo.reaction_emoji && (
+                    <div className="absolute top-4 right-4 text-2xl drop-shadow-md animate-bounce">
+                      {echo.reaction_emoji}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+          <div className="px-6 py-4 bg-zinc-50/50 dark:bg-zinc-950/50 border-t border-zinc-100 dark:border-zinc-800 shrink-0">
+             <Button variant="ghost" className="w-full text-zinc-500" onClick={() => setShowMyEchoes(false)}>
+               Close
+             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <style jsx global>{`
         .image-pixelated {
           image-rendering: pixelated;
@@ -765,5 +1070,16 @@ export default function GardenPage() {
         }
       `}</style>
     </div>
+  );
+}
+
+function HandsPrayingIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+      <path d="m14 18-4-4v-4" />
+      <path d="m10 18 4-4v-4" />
+      <path d="m16 12 3 3v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-4l3-3" />
+      <path d="M12 6a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" />
+    </svg>
   );
 }
