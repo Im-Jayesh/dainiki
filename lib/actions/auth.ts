@@ -380,9 +380,14 @@ export async function updateSettings(settings: any) {
       // 2. Create new schedule if enabled
       if (mergedSettings.reminders?.enabled && mergedSettings.reminders?.time) {
         const [h, m] = mergedSettings.reminders.time.split(":");
-        const cron = `${Number(m)} ${Number(h)} * * *`;
+        const userTimezone = mergedSettings.timezone || "UTC";
+
+        // QStash does NOT support a separate `timezone` param — timezone MUST be
+        // embedded in the cron string via the CRON_TZ= prefix.
+        // Without this, QStash evaluates cron in UTC, causing the wrong fire time.
+        const cron = `CRON_TZ=${userTimezone} ${Number(m)} ${Number(h)} * * *`;
         
-        console.log(`[QStash] Scheduling reminder for user ${session.userId} at ${mergedSettings.reminders.time} (${mergedSettings.timezone || "UTC"})`);
+        console.log(`[QStash] Scheduling reminder for user ${session.userId} at ${mergedSettings.reminders.time} (${userTimezone}) → cron: "${cron}"`);
 
         try {
           // Clean up URL to avoid double slashes
@@ -392,8 +397,6 @@ export async function updateSettings(settings: any) {
           const res = await qstashClient.schedules.create({
             destination: destination,
             cron: cron,
-            // @ts-ignore
-            timezone: mergedSettings.timezone || "UTC",
             body: JSON.stringify({ userId: session.userId }),
             headers: {
               "Authorization": `Bearer ${process.env.CRON_SECRET}`,
@@ -401,7 +404,7 @@ export async function updateSettings(settings: any) {
             }
           });
           mergedSettings.qstashScheduleId = res.scheduleId;
-          console.log(`[QStash] Schedule created successfully: ${res.scheduleId}`);
+          console.log(`[QStash] Schedule created successfully: ${res.scheduleId} (cron: "${cron}")`);
         } catch (e) {
           console.error("[QStash] Failed to create schedule:", e);
         }

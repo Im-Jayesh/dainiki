@@ -83,20 +83,25 @@ export async function POST(req: NextRequest) {
 
     const settings = JSON.parse((user.settings as string) || "{}");
     const reminders = settings.reminders || {};
+    const userTimezone = settings.timezone || "UTC";
 
     if (!reminders.enabled) {
       console.log(`[Cron] Reminders disabled for user ${user.username}`);
       return NextResponse.json({ success: true, status: "skipped (disabled)" });
     }
 
-    // Verify they haven't written today
+    // Compute the user's LOCAL today date string (YYYY-MM-DD) in their timezone.
+    // Using UTC date('now') here would be wrong for users not in UTC.
+    const localTodayStr = new Date().toLocaleDateString("en-CA", { timeZone: userTimezone }); // "YYYY-MM-DD"
+
+    // Verify they haven't written today (in their local timezone)
     const entries = await db.execute({
-      sql: "SELECT id FROM entries WHERE user_id = ? AND date(created_at) = date('now')",
-      args: [user.id]
+      sql: `SELECT id FROM entries WHERE user_id = ? AND date(created_at, 'localtime') = ?`,
+      args: [user.id, localTodayStr]
     });
 
     if (entries.rows.length > 0) {
-      console.log(`[Cron] User ${user.username} already wrote today. Skipping reminder.`);
+      console.log(`[Cron] User ${user.username} already wrote today (${localTodayStr} in ${userTimezone}). Skipping reminder.`);
       return NextResponse.json({ success: true, status: "skipped (already written today)" });
     }
 
