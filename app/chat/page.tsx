@@ -51,8 +51,41 @@ export default function ChatPage() {
   const [currentSessionTitle, setCurrentSessionTitle] = useState<string>("New Chat");
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const hasLoadedInitialSessionRef = useRef(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Auto-focus input on page mount + redirect any typing to the input (like ChatGPT)
+  useEffect(() => {
+    inputRef.current?.focus();
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Ignore if already focused on an input/textarea/contenteditable
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement ||
+        (active instanceof HTMLElement && active.isContentEditable)
+      ) return;
+
+      // Ignore modifier-only keys, special keys, and browser shortcuts
+      if (
+        e.metaKey || e.ctrlKey || e.altKey ||
+        e.key === "Escape" || e.key === "Tab" || e.key === "Enter" ||
+        e.key === "Backspace" || e.key === "Delete" ||
+        e.key.startsWith("Arrow") || e.key.startsWith("F") ||
+        e.key === "Shift" || e.key === "Control" || e.key === "Alt" ||
+        e.key === "Meta" || e.key === "CapsLock" || e.key === "NumLock" ||
+        e.key.length > 1 // non-printable keys
+      ) return;
+
+      // Focus the input — the browser will naturally route the keystroke to it
+      inputRef.current?.focus();
+    };
+
+    document.addEventListener("keydown", handleGlobalKeyDown);
+    return () => document.removeEventListener("keydown", handleGlobalKeyDown);
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -154,6 +187,7 @@ export default function ChatPage() {
     setCurrentSessionId(null);
     setCurrentSessionTitle("New Chat");
     setMessages([]);
+    setTimeout(() => inputRef.current?.focus(), 50);
   };
 
   // Delete a specific session
@@ -383,6 +417,7 @@ export default function ChatPage() {
                 hasLoadedInitialSessionRef.current = true;
                 setCurrentSessionId(s.session_id);
                 setCurrentSessionTitle(s.session_title);
+                setTimeout(() => inputRef.current?.focus(), 50);
               }}
               className={cn(
                 "group flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-colors relative overflow-hidden",
@@ -613,6 +648,7 @@ export default function ChatPage() {
             {/* Input Form */}
             <div className="flex gap-2 shrink-0">
               <Input
+                ref={inputRef}
                 placeholder={currentSessionId ? "Message Dainiki..." : "Send a message to start a new chat..."}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
