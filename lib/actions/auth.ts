@@ -362,9 +362,10 @@ export async function updateSettings(settings: any) {
 
   // QStash Integration for Exact Scheduling
   const qstashToken = process.env.QSTASH_TOKEN;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  // IMPORTANT: NEXT_PUBLIC_ vars are client-side only. Use server-side APP_URL.
+  const appUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`;
 
-  console.log(`[QStash] Token present: ${!!qstashToken}, AppURL: ${appUrl}`);
+  console.log(`[QStash] Token present: ${!!qstashToken}, AppURL: ${appUrl}, VERCEL_URL: ${process.env.VERCEL_URL}`);
 
   if (qstashToken && appUrl) {
     // Lazily create client inside function to ensure env vars are read at call time
