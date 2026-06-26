@@ -43,7 +43,8 @@ import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { SecuritySettings } from "./auth/security-settings";
 import { useState, useEffect } from "react";
-import { getAllEntries } from "@/lib/actions/journal";
+import { getAllEntries, exportAllEntries } from "@/lib/actions/journal";
+import { updateSettings } from "@/lib/actions/auth";
 import { isSameDay, subDays } from "date-fns";
 
 const NAV_ITEMS = [
@@ -310,7 +311,6 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
                                 const next = { ...reminders, enabled: e.target.checked };
                                 setReminders(next);
                                 const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                                const { updateSettings } = await import("@/lib/actions/auth");
                                 await updateSettings({ reminders: next, appearance, timezone });
                               }}
                               className="accent-zinc-900 dark:accent-zinc-100"
@@ -325,7 +325,6 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
                                 const next = { ...reminders, time: e.target.value };
                                 setReminders(next);
                                 const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                                const { updateSettings } = await import("@/lib/actions/auth");
                                 await updateSettings({ reminders: next, appearance, timezone });
                               }} 
                               className="bg-zinc-50 dark:bg-zinc-900 border-none rounded-xl h-11 w-full" 
@@ -340,7 +339,6 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
                     variant="ghost" 
                     className="w-full justify-start text-sm font-medium h-11 px-3 rounded-xl text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
                     onClick={async () => {
-                      const { exportAllEntries } = await import("@/lib/actions/journal");
                       const { decrypt } = await import("@/lib/crypto");
                       const entries = await exportAllEntries();
                       const decrypted = await Promise.all(entries.map(async (e: any) => {

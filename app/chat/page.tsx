@@ -11,7 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Send, Bot, User as UserIcon, RefreshCw, ChevronRight, ChevronLeft, Plus, MessageSquare, Trash2 } from "lucide-react";
 import { encrypt, decrypt } from "@/lib/crypto";
 import { getAllEntries } from "@/lib/actions/journal";
-import { updatePersonalityProfile } from "@/lib/actions/auth";
+import { updatePersonalityProfile, deductAiCredit } from "@/lib/actions/auth";
 import { getChatHistory, saveChatMessage, getChatSessions, deleteChatSession } from "@/lib/actions/chat";
 
 const THEME_STYLES: Record<string, string> = {
@@ -282,7 +282,6 @@ export default function ChatPage() {
   const handleSend = async () => {
     if (!input.trim() || isLoading || !user || !encryptionKey || !user.salt) return;
     
-    const { deductAiCredit } = await import("@/lib/actions/auth");
     const creditRes = await deductAiCredit();
     if (!creditRes.success) {
       setMessages(prev => [...prev, { role: "ai", content: creditRes.error || "No credits remaining for today." }]);

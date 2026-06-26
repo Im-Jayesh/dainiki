@@ -4,7 +4,8 @@ import { useAuth } from "@/contexts/auth-context";
 import { useSettings } from "@/contexts/settings-context";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Editor } from "@/components/editor";
-import { saveEntry, getAllEntries, deleteEntry, fetchMoods, saveMood, createHistoryItem, getAiHistory, updateAiHistoryStatus, clearAiHistory } from "@/lib/actions/journal";
+import { saveEntry, getAllEntries, deleteEntry, fetchMoods, saveMood, createHistoryItem, getAiHistory, updateAiHistoryStatus, clearAiHistory, getSingleEntry, restoreEntry, toggleArchive } from "@/lib/actions/journal";
+import { deductAiCredit } from "@/lib/actions/auth";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Plus, Hash, Smile, Sparkles, AlertCircle, Zap, X, Trash2, Download, Archive, ArchiveRestore, ChevronRight, LayoutDashboard, Palette, Bot, ShieldCheck, Check } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -200,7 +201,6 @@ export default function JournalPage() {
         if (found) {
           handleSelect(found, found.id === selectedId);
         } else {
-          const { getSingleEntry } = await import("@/lib/actions/journal");
           const e = await getSingleEntry(idNum);
           if (e) {
             try {
@@ -347,13 +347,11 @@ export default function JournalPage() {
   };
 
   const handleRestore = async (id: number) => {
-    const { restoreEntry } = await import("@/lib/actions/journal");
     await restoreEntry(id);
     loadEntries();
   };
 
   const handleToggleArchive = async (id: number, currentStatus?: boolean) => {
-    const { toggleArchive } = await import("@/lib/actions/journal");
     await toggleArchive(id, !currentStatus);
     if (selectedId === id) handleNewEntry();
     loadEntries();
@@ -376,7 +374,6 @@ export default function JournalPage() {
 
   const handleAiAssist = async (type: "summarize" | "format" | "reflect") => {
     if (!content) return;
-    const { deductAiCredit } = await import("@/lib/actions/auth");
     const creditRes = await deductAiCredit();
     if (!creditRes.success) {
       setAiError(creditRes.error || "No credits remaining");
@@ -456,7 +453,6 @@ export default function JournalPage() {
       setEntryAiHistory(prev => [...prev, newItem]);
 
       // 4. Update legacy columns for backward compatibility
-      const { saveEntry: saveAction } = await import("@/lib/actions/journal");
       const currentTitle = title || "Untitled " + format(selectedDate || new Date(), "MMM d, yyyy");
       const eTitle = await encrypt(currentTitle, encryptionKey!, user!.salt);
       const eContent = await encrypt(content, encryptionKey!, user!.salt);
@@ -478,7 +474,7 @@ export default function JournalPage() {
         updateData.ai_format = encryptedValue;
         setEntryAiFormat(fullResponse);
       }
-      await saveAction(updateData);
+      await saveEntry(updateData);
       loadEntries();
       
     } catch (err: any) {
@@ -523,13 +519,12 @@ export default function JournalPage() {
     
     await updateAiHistoryStatus(Number(id), "applied");
     
-    const { saveEntry: saveAction } = await import("@/lib/actions/journal");
     const currentTitle = title || "Untitled " + format(selectedDate || new Date(), "MMM d, yyyy");
     const eTitle = await encrypt(currentTitle, encryptionKey!, user!.salt);
     const eContent = await encrypt(formattedSuggestion, encryptionKey!, user!.salt);
     const eFormat = await encrypt(item.content, encryptionKey!, user!.salt);
     
-    await saveAction({
+    await saveEntry({
       id: selectedId || undefined,
       title: eTitle,
       content: eContent,
