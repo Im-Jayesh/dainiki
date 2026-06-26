@@ -352,8 +352,6 @@ export async function deductAiCredit() {
 
 import { Client } from "@upstash/qstash";
 
-const qstashClient = process.env.QSTASH_TOKEN ? new Client({ token: process.env.QSTASH_TOKEN }) : null;
-
 export async function updateSettings(settings: any) {
   const session = await getSession();
   if (!session) throw new Error("Unauthorized");
@@ -363,7 +361,15 @@ export async function updateSettings(settings: any) {
   const mergedSettings = { ...currentSettings, ...settings };
 
   // QStash Integration for Exact Scheduling
-  if (qstashClient && process.env.NEXT_PUBLIC_APP_URL) {
+  const qstashToken = process.env.QSTASH_TOKEN;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+
+  console.log(`[QStash] Token present: ${!!qstashToken}, AppURL: ${appUrl}`);
+
+  if (qstashToken && appUrl) {
+    // Lazily create client inside function to ensure env vars are read at call time
+    const qstashClient = new Client({ token: qstashToken });
+
     // If they updated reminders, sync with QStash
     if (settings.reminders !== undefined || settings.timezone !== undefined) {
       
@@ -371,6 +377,7 @@ export async function updateSettings(settings: any) {
       if (currentSettings.qstashScheduleId) {
         try {
           await qstashClient.schedules.delete(currentSettings.qstashScheduleId);
+          console.log(`[QStash] Deleted old schedule: ${currentSettings.qstashScheduleId}`);
         } catch (e) {
           console.error("[QStash] Failed to delete old schedule:", e);
         }
@@ -387,11 +394,11 @@ export async function updateSettings(settings: any) {
         // Without this, QStash evaluates cron in UTC, causing the wrong fire time.
         const cron = `CRON_TZ=${userTimezone} ${Number(m)} ${Number(h)} * * *`;
         
-        console.log(`[QStash] Scheduling reminder for user ${session.userId} at ${mergedSettings.reminders.time} (${userTimezone}) → cron: "${cron}"`);
+        console.log(`[QStash] Creating schedule for user ${session.userId} → cron: "${cron}"`);
 
         try {
           // Clean up URL to avoid double slashes
-          const baseUrl = process.env.NEXT_PUBLIC_APP_URL!.replace(/\/$/, "");
+          const baseUrl = appUrl.replace(/\/$/, "");
           const destination = `${baseUrl}/api/cron/reminders`;
           
           const res = await qstashClient.schedules.create({
@@ -404,12 +411,16 @@ export async function updateSettings(settings: any) {
             }
           });
           mergedSettings.qstashScheduleId = res.scheduleId;
-          console.log(`[QStash] Schedule created successfully: ${res.scheduleId} (cron: "${cron}")`);
+          console.log(`[QStash] Schedule created: ${res.scheduleId} (cron: "${cron}")`);
         } catch (e) {
           console.error("[QStash] Failed to create schedule:", e);
         }
+      } else {
+        console.log(`[QStash] Skipping schedule creation: enabled=${mergedSettings.reminders?.enabled}, time=${mergedSettings.reminders?.time}`);
       }
     }
+  } else {
+    console.warn(`[QStash] Skipped — token present: ${!!qstashToken}, appUrl: ${appUrl}`);
   }
 
   await db.execute({
