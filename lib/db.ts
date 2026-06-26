@@ -142,10 +142,19 @@ export async function initDb() {
       user_id INTEGER NOT NULL,
       role TEXT NOT NULL,
       content TEXT NOT NULL,
+      session_id TEXT,
+      session_title TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
   `);
+
+  try {
+    await db.execute(`ALTER TABLE chat_messages ADD COLUMN session_id TEXT`);
+  } catch (e) {}
+  try {
+    await db.execute(`ALTER TABLE chat_messages ADD COLUMN session_title TEXT`);
+  } catch (e) {}
 
   // Create entry_ai_history table for version log of AI generations per entry
   await db.execute(`
