@@ -20,6 +20,9 @@ export async function GET(req: NextRequest) {
       settings: JSON.parse((u.settings as string) || "{}"),
     }));
 
+    const entriesResult = await db.execute("SELECT id, user_id, created_at FROM entries LIMIT 5");
+    const entries = entriesResult.rows;
+
     return NextResponse.json({
       users: users.map(u => ({
         id: u.id,
@@ -27,7 +30,8 @@ export async function GET(req: NextRequest) {
         reminders: u.settings.reminders,
         timezone: u.settings.timezone,
         qstashScheduleId: u.settings.qstashScheduleId,
-      }))
+      })),
+      entries
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

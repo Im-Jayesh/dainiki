@@ -73,6 +73,25 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
   const [streak, setStreak] = useState(0);
   const [lastEntryDate, setLastEntryDate] = useState<string | undefined>(undefined);
 
+  // Local reminder state — loaded from DB (source of truth), not localStorage
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderTime, setReminderTime] = useState("20:00");
+  const [reminderSaving, setReminderSaving] = useState(false);
+  const [reminderSaved, setReminderSaved] = useState(false);
+  const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  // Sync reminder state from DB settings whenever user loads
+  useEffect(() => {
+    if (!user?.settings) return;
+    try {
+      const s = JSON.parse(user.settings);
+      if (s.reminders) {
+        setReminderEnabled(s.reminders.enabled ?? false);
+        setReminderTime(s.reminders.time ?? "20:00");
+      }
+    } catch {}
+  }, [user]);
+
   useEffect(() => {
     const calculateStreak = async () => {
       if (!user) return;
@@ -302,17 +321,19 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
 
                         <div className="space-y-4">
                           <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-zinc-400"><Bell className="h-3 w-3" /> Email Reminders</div>
+                          
+                          {/* Timezone display */}
+                          <div className="px-1 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800">
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-400 mb-0.5">Detected Timezone</p>
+                            <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">{detectedTimezone}</p>
+                          </div>
+
                           <div className="flex items-center justify-between px-1">
                             <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Enable Reminders</span>
                             <input 
                               type="checkbox" 
-                              checked={reminders.enabled} 
-                              onChange={async (e) => {
-                                const next = { ...reminders, enabled: e.target.checked };
-                                setReminders(next);
-                                const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                                await updateSettings({ reminders: next, appearance, timezone });
-                              }}
+                              checked={reminderEnabled} 
+                              onChange={(e) => setReminderEnabled(e.target.checked)}
                               className="accent-zinc-900 dark:accent-zinc-100"
                             />
                           </div>
@@ -320,16 +341,45 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
                             <label className="text-xs font-medium px-1 text-zinc-500">Scheduled Time</label>
                             <Input 
                               type="time" 
-                              value={reminders.time} 
-                              onChange={async (e) => {
-                                const next = { ...reminders, time: e.target.value };
-                                setReminders(next);
-                                const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                                await updateSettings({ reminders: next, appearance, timezone });
-                              }} 
+                              value={reminderTime} 
+                              onChange={(e) => setReminderTime(e.target.value)}
                               className="bg-zinc-50 dark:bg-zinc-900 border-none rounded-xl h-11 w-full" 
                             />
                           </div>
+                          <Button
+                            onClick={async () => {
+                              setReminderSaving(true);
+                              setReminderSaved(false);
+                              try {
+                                await updateSettings({ appearance, timezone: detectedTimezone });
+                                const res = await fetch("/api/reminders/schedule", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    userId: user?.userId,
+                                    enabled: reminderEnabled,
+                                    time: reminderTime,
+                                    timezone: detectedTimezone,
+                                  }),
+                                });
+                                const data = await res.json();
+                                console.log("[Reminder saved]", data);
+                                // Also update local context/localStorage so it reflects immediately
+                                setReminders({ ...reminders, enabled: reminderEnabled, time: reminderTime });
+                                setReminderSaved(true);
+                                setTimeout(() => setReminderSaved(false), 3000);
+                              } catch (e) {
+                                console.error("[Reminder save failed]", e);
+                              } finally {
+                                setReminderSaving(false);
+                              }
+                            }}
+                            disabled={reminderSaving}
+                            size="sm"
+                            className="w-full h-10 rounded-xl text-xs font-bold uppercase tracking-wider"
+                          >
+                            {reminderSaving ? "Saving..." : reminderSaved ? "✓ Saved!" : "Save Reminder"}
+                          </Button>
                         </div>
                       </div>
                     </DialogContent>

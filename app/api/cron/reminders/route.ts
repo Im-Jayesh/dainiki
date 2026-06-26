@@ -33,15 +33,31 @@ export async function GET(req: NextRequest) {
         const localTimeString = format(localNow, "HH:mm");
         
         if (reminders.time === localTimeString) {
-          // Verify they haven't written today
-          const entries = await db.execute({
-            sql: "SELECT id FROM entries WHERE user_id = ? AND date(created_at) = date('now')",
+          const localTodayStr = format(localNow, "yyyy-MM-dd");
+
+          // Verify they haven't written today (in their local timezone)
+          const entriesResult = await db.execute({
+            sql: "SELECT created_at FROM entries WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
             args: [user.id]
           });
 
-          if (entries.rows.length === 0) {
+          let alreadyWrittenToday = false;
+          if (entriesResult.rows.length > 0) {
+            const dbCreatedAt = entriesResult.rows[0].created_at as string;
+            const utcDate = new Date(dbCreatedAt.includes("T") ? dbCreatedAt : dbCreatedAt.replace(" ", "T") + "Z");
+            const zonedDate = toZonedTime(utcDate, userTimezone);
+            const lastEntryLocalDateStr = format(zonedDate, "yyyy-MM-dd");
+            
+            if (lastEntryLocalDateStr === localTodayStr) {
+              alreadyWrittenToday = true;
+            }
+          }
+
+          if (!alreadyWrittenToday) {
             await sendEmailReminder(user.email as string, user.username as string);
             results.push({ user: user.username, status: "sent" });
+          } else {
+            results.push({ user: user.username, status: "skipped (already written today)" });
           }
         }
       } catch (e) {
@@ -91,16 +107,30 @@ export async function POST(req: NextRequest) {
     }
 
     // Compute the user's LOCAL today date string (YYYY-MM-DD) in their timezone.
-    // Using UTC date('now') here would be wrong for users not in UTC.
-    const localTodayStr = new Date().toLocaleDateString("en-CA", { timeZone: userTimezone }); // "YYYY-MM-DD"
+    const utcNow = new Date();
+    const localNow = toZonedTime(utcNow, userTimezone);
+    const localTodayStr = format(localNow, "yyyy-MM-dd");
 
     // Verify they haven't written today (in their local timezone)
-    const entries = await db.execute({
-      sql: `SELECT id FROM entries WHERE user_id = ? AND date(created_at, 'localtime') = ?`,
-      args: [user.id, localTodayStr]
+    const entriesResult = await db.execute({
+      sql: "SELECT created_at FROM entries WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
+      args: [user.id]
     });
 
-    if (entries.rows.length > 0) {
+    let alreadyWrittenToday = false;
+    if (entriesResult.rows.length > 0) {
+      const dbCreatedAt = entriesResult.rows[0].created_at as string;
+      const utcDate = new Date(dbCreatedAt.includes("T") ? dbCreatedAt : dbCreatedAt.replace(" ", "T") + "Z");
+      const zonedDate = toZonedTime(utcDate, userTimezone);
+      const lastEntryLocalDateStr = format(zonedDate, "yyyy-MM-dd");
+      
+      if (lastEntryLocalDateStr === localTodayStr) {
+        alreadyWrittenToday = true;
+      }
+      console.log(`[Cron] Last entry date: ${lastEntryLocalDateStr}, Today: ${localTodayStr}`);
+    }
+
+    if (alreadyWrittenToday) {
       console.log(`[Cron] User ${user.username} already wrote today (${localTodayStr} in ${userTimezone}). Skipping reminder.`);
       return NextResponse.json({ success: true, status: "skipped (already written today)" });
     }
