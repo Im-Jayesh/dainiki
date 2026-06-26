@@ -59,9 +59,13 @@ export async function POST(req: NextRequest) {
     }
 
     // Create new schedule if enabled
+    let tz = timezone || "UTC";
+    if (tz === "Asia/Calcutta") tz = "Asia/Kolkata";
+    if (tz === "Asia/Katmandu") tz = "Asia/Kathmandu";
+    if (tz === "Asia/Saigon") tz = "Asia/Ho_Chi_Minh";
+
     if (enabled && time) {
       const [h, m] = time.split(":");
-      const tz = timezone || "UTC";
       const cron = `CRON_TZ=${tz} ${Number(m)} ${Number(h)} * * *`;
       const destination = `${appUrl.replace(/\/$/, "")}/api/cron/reminders`;
 
@@ -83,7 +87,7 @@ export async function POST(req: NextRequest) {
 
     // Persist updated settings
     settings.reminders = { ...(settings.reminders || {}), enabled, time };
-    settings.timezone = timezone || settings.timezone;
+    settings.timezone = tz || settings.timezone;
 
     await db.execute({
       sql: "UPDATE users SET settings = ? WHERE id = ?",

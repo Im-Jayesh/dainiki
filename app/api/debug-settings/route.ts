@@ -59,7 +59,10 @@ export async function POST(req: NextRequest) {
     
     const settings = JSON.parse((user.settings as string) || "{}");
     const reminders = settings.reminders;
-    const timezone = settings.timezone || "UTC";
+    let timezone = settings.timezone || "UTC";
+    if (timezone === "Asia/Calcutta") timezone = "Asia/Kolkata";
+    if (timezone === "Asia/Katmandu") timezone = "Asia/Kathmandu";
+    if (timezone === "Asia/Saigon") timezone = "Asia/Ho_Chi_Minh";
     
     if (!reminders?.enabled || !reminders?.time) {
       return NextResponse.json({ 
