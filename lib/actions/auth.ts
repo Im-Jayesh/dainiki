@@ -380,39 +380,20 @@ export async function updateSettings(settings: any) {
       // 2. Create new schedule if enabled
       if (mergedSettings.reminders?.enabled && mergedSettings.reminders?.time) {
         const [h, m] = mergedSettings.reminders.time.split(":");
-        let cron = `${Number(m)} ${Number(h)} * * *`; // Default to the literal hour if tz fails
+        const cron = `${Number(m)} ${Number(h)} * * *`;
         
+        console.log(`[QStash] Scheduling reminder for user ${session.userId} at ${mergedSettings.reminders.time} (${mergedSettings.timezone || "UTC"})`);
+
         try {
-          // Calculate UTC offset for the given timezone
-          const parts = new Intl.DateTimeFormat('en-US', {
-            timeZone: mergedSettings.timezone || "UTC",
-            timeZoneName: 'shortOffset'
-          }).formatToParts(new Date());
+          // Clean up URL to avoid double slashes
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL!.replace(/\/$/, "");
+          const destination = `${baseUrl}/api/cron/reminders`;
           
-          const offsetPart = parts.find(p => p.type === 'timeZoneName')?.value; // e.g., "GMT-4" or "GMT+5:30"
-          if (offsetPart && offsetPart !== "GMT") {
-            const sign = offsetPart.includes('-') ? -1 : 1;
-            const timeStr = offsetPart.replace('GMT', '').replace('+', '').replace('-', '');
-            const [offH, offM] = timeStr.split(':').map(Number);
-            
-            // Calculate UTC time
-            let utcM = Number(m) - (sign * (offM || 0));
-            let utcH = Number(h) - (sign * offH);
-            
-            if (utcM < 0) { utcM += 60; utcH -= 1; }
-            if (utcM >= 60) { utcM -= 60; utcH += 1; }
-            utcH = (utcH + 24) % 24;
-
-            cron = `${utcM} ${utcH} * * *`;
-          }
-        } catch (e) {
-          console.error("[QStash] Timezone parsing error:", e);
-        }
-
-        try {
           const res = await qstashClient.schedules.create({
-            destination: `${process.env.NEXT_PUBLIC_APP_URL}/api/cron/reminders`,
+            destination: destination,
             cron: cron,
+            // @ts-ignore
+            timezone: mergedSettings.timezone || "UTC",
             body: JSON.stringify({ userId: session.userId }),
             headers: {
               "Authorization": `Bearer ${process.env.CRON_SECRET}`,
@@ -420,6 +401,7 @@ export async function updateSettings(settings: any) {
             }
           });
           mergedSettings.qstashScheduleId = res.scheduleId;
+          console.log(`[QStash] Schedule created successfully: ${res.scheduleId}`);
         } catch (e) {
           console.error("[QStash] Failed to create schedule:", e);
         }

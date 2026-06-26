@@ -57,12 +57,17 @@ export async function GET(req: NextRequest) {
 // Targeted check endpoint for exact schedulers like Upstash QStash
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
+  console.log(`[Cron] Received POST request. Auth header present: ${!!authHeader}`);
+  
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    console.warn(`[Cron] Unauthorized POST attempt. Expected Bearer ${process.env.CRON_SECRET?.substring(0, 4)}...`);
     return new Response("Unauthorized", { status: 401 });
   }
 
   try {
     const { userId } = await req.json();
+    console.log(`[Cron] Triggering reminder check for userId: ${userId}`);
+    
     if (!userId) return new Response("Missing userId", { status: 400 });
 
     const result = await db.execute({
@@ -71,12 +76,16 @@ export async function POST(req: NextRequest) {
     });
 
     const user = result.rows[0];
-    if (!user) return new Response("User not found", { status: 404 });
+    if (!user) {
+      console.warn(`[Cron] User ${userId} not found`);
+      return new Response("User not found", { status: 404 });
+    }
 
     const settings = JSON.parse((user.settings as string) || "{}");
     const reminders = settings.reminders || {};
 
     if (!reminders.enabled) {
+      console.log(`[Cron] Reminders disabled for user ${user.username}`);
       return NextResponse.json({ success: true, status: "skipped (disabled)" });
     }
 
@@ -87,12 +96,15 @@ export async function POST(req: NextRequest) {
     });
 
     if (entries.rows.length > 0) {
+      console.log(`[Cron] User ${user.username} already wrote today. Skipping reminder.`);
       return NextResponse.json({ success: true, status: "skipped (already written today)" });
     }
 
+    console.log(`[Cron] Sending reminder email to ${user.username} (${user.email})`);
     await sendEmailReminder(user.email as string, user.username as string);
     return NextResponse.json({ success: true, status: "sent" });
   } catch (err: any) {
+    console.error(`[Cron] Error in POST handler:`, err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }

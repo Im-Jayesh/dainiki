@@ -119,6 +119,47 @@ export async function initDb() {
     await db.execute(`ALTER TABLE entries ADD COLUMN user_id INTEGER REFERENCES users(id)`);
   } catch (e) {}
 
+  // Migrations for entries table (AI feature history)
+  const entryColumns = [
+    { name: 'ai_summary', type: 'TEXT' },
+    { name: 'ai_reflection', type: 'TEXT' },
+    { name: 'ai_format', type: 'TEXT' },
+    { name: 'ai_history', type: 'TEXT' }
+  ];
+
+  for (const col of entryColumns) {
+    try {
+      await db.execute(`ALTER TABLE entries ADD COLUMN ${col.name} ${col.type}`);
+    } catch (e) {
+      // Column probably already exists
+    }
+  }
+
+  // Create chat_messages table for persisted chat
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+  `);
+
+  // Create entry_ai_history table for version log of AI generations per entry
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS entry_ai_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entry_id INTEGER NOT NULL,
+      feature TEXT NOT NULL,
+      content TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+    );
+  `);
+
   // Seed default moods
   const moods = [
     ['Happy', '😊', 0],

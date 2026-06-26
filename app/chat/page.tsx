@@ -13,6 +13,7 @@ import { Sparkles, Send, Bot, User as UserIcon, RefreshCw, ChevronRight } from "
 import { encrypt, decrypt } from "@/lib/crypto";
 import { getAllEntries } from "@/lib/actions/journal";
 import { updatePersonalityProfile } from "@/lib/actions/auth";
+import { getChatHistory, saveChatMessage, clearChatHistory } from "@/lib/actions/chat";
 
 const THEME_STYLES: Record<string, string> = {
   zinc: "bg-white dark:bg-black text-zinc-900 dark:text-zinc-100",
@@ -36,6 +37,7 @@ export default function ChatPage() {
   const [profile, setProfile] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -44,19 +46,39 @@ export default function ChatPage() {
   }, [messages]);
 
   useEffect(() => {
-    const loadProfile = async () => {
-      if (!user || !user.settings || !encryptionKey || !user.salt) return;
+    const loadData = async () => {
+      if (!user || !encryptionKey || !user.salt) return;
+      
+      // Load Profile
       try {
-        const settings = JSON.parse(user.settings);
-        if (settings.personalityProfile) {
-          const decryptedProfile = await decrypt(settings.personalityProfile, encryptionKey, user.salt);
-          setProfile(decryptedProfile);
+        if (user.settings) {
+          const settings = JSON.parse(user.settings);
+          if (settings.personalityProfile) {
+            const decryptedProfile = await decrypt(settings.personalityProfile, encryptionKey, user.salt);
+            setProfile(decryptedProfile);
+          }
         }
       } catch (e) {
         console.error("Failed to decrypt profile", e);
       }
+
+      // Load Chat History
+      try {
+        const history = await getChatHistory();
+        const decryptedHistory = await Promise.all(history.map(async (msg) => {
+          try {
+            const decryptedContent = await decrypt(msg.content, encryptionKey, user.salt);
+            return { role: msg.role, content: decryptedContent } as Message;
+          } catch (err) {
+            return { role: msg.role, content: "🔒 Decryption Failed" } as Message;
+          }
+        }));
+        setMessages(decryptedHistory);
+      } catch (e) {
+        console.error("Failed to load chat history", e);
+      }
     };
-    loadProfile();
+    loadData();
   }, [user, encryptionKey]);
 
   const generateProfile = async () => {
@@ -110,6 +132,21 @@ export default function ChatPage() {
     }
   };
 
+  const handleClearChat = async () => {
+    if (!confirm("Are you sure you want to clear your companion chat history? This cannot be undone.")) return;
+    setIsClearing(true);
+    try {
+      const success = await clearChatHistory();
+      if (success) {
+        setMessages([]);
+      }
+    } catch (e) {
+      console.error("Failed to clear chat:", e);
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
     
@@ -123,11 +160,22 @@ export default function ChatPage() {
 
     const userMsg = input.trim();
     setInput("");
+    
+    // Add user message locally
     setMessages(prev => [...prev, { role: "user", content: userMsg }]);
     setIsLoading(true);
 
     try {
-      const chatHistory = messages.map(m => `${m.role === 'ai' ? 'AI' : 'User'}: ${m.content}`).join('\n');
+      // 1. Encrypt and save user message to DB
+      const encryptedUserMsg = await encrypt(userMsg, encryptionKey!, user!.salt);
+      await saveChatMessage("user", encryptedUserMsg);
+
+      // 2. Token & Cost Optimization: Slice the messages array to only send the last 10 messages of context
+      // (including the latest message we just added)
+      const fullConversation = [...messages, { role: "user", content: userMsg } as Message];
+      const recentMessages = fullConversation.slice(-10);
+      
+      const chatHistory = recentMessages.map(m => `${m.role === 'ai' ? 'AI' : 'User'}: ${m.content}`).join('\n');
       const prompt = `Conversation history:\n${chatHistory}\nUser: ${userMsg}\nAI:`;
 
       const response = await fetch("/api/ai", { 
@@ -156,6 +204,11 @@ export default function ChatPage() {
           return newMsgs;
         });
       }
+
+      // 3. Encrypt and save AI response to DB
+      const encryptedAiResponse = await encrypt(fullResponse, encryptionKey!, user!.salt);
+      await saveChatMessage("ai", encryptedAiResponse);
+
     } catch (e) {
       console.error(e);
       setMessages(prev => [...prev, { role: "ai", content: "I'm having trouble responding right now. Please try again." }]);
@@ -180,7 +233,10 @@ export default function ChatPage() {
           </Button>
         )}
 
-        <div className="absolute right-4 top-4 lg:right-6 lg:top-6 z-10">
+        <div className="absolute right-4 top-4 lg:right-6 lg:top-6 z-10 flex gap-2">
+           <Button onClick={handleClearChat} disabled={isClearing} variant="outline" size="sm" className="h-10 px-3 lg:px-4 text-xs font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-black/50 backdrop-blur-sm hover:bg-zinc-100 dark:hover:bg-zinc-900">
+              Clear History
+           </Button>
            <Button onClick={generateProfile} disabled={isGeneratingProfile} variant="outline" size="sm" className="h-10 px-3 lg:px-4 text-xs font-medium text-zinc-900 dark:text-zinc-100 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-black/50 backdrop-blur-sm hover:bg-zinc-100 dark:hover:bg-zinc-900">
               <RefreshCw className={cn("h-4 w-4 lg:mr-2", isGeneratingProfile && "animate-spin")} /> <span className="hidden lg:inline">Update AI Knowledge</span>
            </Button>

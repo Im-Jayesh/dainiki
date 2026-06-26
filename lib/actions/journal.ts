@@ -1,10 +1,20 @@
 "use server";
 
-import { createEntry, updateEntry, getEntries, getEntry, softDeleteEntry, hardDeleteEntry, archiveEntry, getMoods, createMood, searchEntries } from "@/lib/journal";
+import { createEntry, updateEntry, getEntries, getEntry, softDeleteEntry, hardDeleteEntry, archiveEntry, getMoods, createMood, searchEntries, createAiHistoryItem, getAiHistoryForEntry, updateAiHistoryItemStatus, clearAiHistoryForEntry } from "@/lib/journal";
 import { revalidatePath } from "next/cache";
 import { getSession } from "./auth";
 
-export async function saveEntry(data: { id?: number; title: string; content: string; mood_id?: number; tags?: string[] }) {
+export async function saveEntry(data: { 
+  id?: number; 
+  title: string; 
+  content: string; 
+  mood_id?: number; 
+  tags?: string[];
+  ai_summary?: string | null;
+  ai_reflection?: string | null;
+  ai_format?: string | null;
+  ai_history?: string | null;
+}) {
   const session = await getSession();
   if (!session) throw new Error("Unauthorized");
 
@@ -82,3 +92,28 @@ export async function exportAllEntries() {
   if (!session) throw new Error("Unauthorized");
   return getEntries(session.userId, { view: "active" }); // This helper already handles basic fetching
 }
+
+export async function createHistoryItem(entryId: number, feature: string, content: string, status: string = "pending") {
+  const session = await getSession();
+  if (!session) throw new Error("Unauthorized");
+  return createAiHistoryItem(entryId, feature, content, status);
+}
+
+export async function getAiHistory(entryId: number) {
+  const session = await getSession();
+  if (!session) return [];
+  return getAiHistoryForEntry(entryId);
+}
+
+export async function updateAiHistoryStatus(id: number, status: string) {
+  const session = await getSession();
+  if (!session) throw new Error("Unauthorized");
+  return updateAiHistoryItemStatus(id, status);
+}
+
+export async function clearAiHistory(entryId: number) {
+  const session = await getSession();
+  if (!session) throw new Error("Unauthorized");
+  return clearAiHistoryForEntry(entryId);
+}
+

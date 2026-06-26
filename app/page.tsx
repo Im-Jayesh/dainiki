@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useSettings } from "@/contexts/settings-context";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Editor } from "@/components/editor";
-import { saveEntry, getAllEntries, deleteEntry, fetchMoods, saveMood } from "@/lib/actions/journal";
+import { saveEntry, getAllEntries, deleteEntry, fetchMoods, saveMood, createHistoryItem, getAiHistory, updateAiHistoryStatus, clearAiHistory } from "@/lib/actions/journal";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Plus, Hash, Smile, Sparkles, AlertCircle, Zap, X, Trash2, Download, Archive, ArchiveRestore, ChevronRight, LayoutDashboard, Palette, Bot, ShieldCheck, Check } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -32,6 +32,18 @@ interface Entry {
   created_at: string;
   is_deleted?: boolean;
   is_archived?: boolean;
+  ai_summary?: string | null;
+  ai_reflection?: string | null;
+  ai_format?: string | null;
+  ai_history?: string | null;
+}
+
+export interface AiHistoryItem {
+  id: string;
+  feature: "summarize" | "format" | "reflect";
+  content: string;
+  created_at: string;
+  status?: "pending" | "applied" | "discarded";
 }
 
 interface Mood {
@@ -65,8 +77,19 @@ export default function JournalPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
-  const [aiSummary, setAiSummary] = useState<string | null>(null);
-  const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
+  
+  // Persisted AI feature values loaded from entry
+  const [entryAiSummary, setEntryAiSummary] = useState<string | null>(null);
+  const [entryAiReflection, setEntryAiReflection] = useState<string | null>(null);
+  const [entryAiFormat, setEntryAiFormat] = useState<string | null>(null);
+  const [entryAiHistory, setEntryAiHistory] = useState<AiHistoryItem[]>([]);
+  const [showAiHistoryPanel, setShowAiHistoryPanel] = useState(false);
+  const [aiHistoryTab, setAiHistoryTab] = useState<"summarize" | "format" | "reflect">("summarize");
+
+  // States for active streaming
+  const [streamingFeature, setStreamingFeature] = useState<"summarize" | "reflect" | "format" | null>(null);
+  const [streamingText, setStreamingText] = useState<string>("");
+
   const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
   const [quickEntryContent, setQuickEntryContent] = useState("");
   
@@ -76,16 +99,54 @@ export default function JournalPage() {
   
   const lastSavedRef = useRef({ title: "", content: "", moodId: undefined as number | undefined });
 
-  const handleSelect = useCallback((entry: Entry) => {
+  const handleSelect = useCallback(async (entry: Entry, keepPanelOpen = false) => {
     setSelectedId(entry.id);
     setTitle(entry.title || "");
     setContent(entry.content || "");
     setMoodId(entry.mood_id);
     setSelectedDate(new Date(entry.created_at));
-    setAiSummary(null);
-    setAiSuggestion(null);
+    
+    // Set decrypted AI insights
+    setEntryAiSummary(entry.ai_summary || null);
+    setEntryAiReflection(entry.ai_reflection || null);
+    setEntryAiFormat(entry.ai_format || null);
+    
+    // Reset streaming
+    setStreamingFeature(null);
+    setStreamingText("");
+    if (!keepPanelOpen) {
+      setShowAiHistoryPanel(false);
+    }
+    
     lastSavedRef.current = { title: entry.title || "", content: entry.content || "", moodId: entry.mood_id };
-  }, []);
+
+    // Fetch and decrypt history items
+    if (entry.id && encryptionKey && user?.salt) {
+      try {
+        const rawHistory = await getAiHistory(entry.id);
+        const decryptedHistory = await Promise.all(rawHistory.map(async (item) => {
+          try {
+            const decContent = await decrypt(item.content, encryptionKey, user.salt!);
+            return {
+              ...item,
+              content: decContent
+            } as AiHistoryItem;
+          } catch (e) {
+            return {
+              ...item,
+              content: "🔒 Decryption Failed"
+            } as AiHistoryItem;
+          }
+        }));
+        setEntryAiHistory(decryptedHistory);
+      } catch (err) {
+        console.error("Failed to load AI history:", err);
+        setEntryAiHistory([]);
+      }
+    } else {
+      setEntryAiHistory([]);
+    }
+  }, [encryptionKey, user]);
 
   const handleCreateMood = async () => {
     if (!newMoodName.trim() || !newMoodEmoji.trim()) return;
@@ -109,7 +170,23 @@ export default function JournalPage() {
         try {
           const dTitle = await decrypt(e.title, encryptionKey, user.salt);
           const dContent = await decrypt(e.content, encryptionKey, user.salt);
-          return { ...e, title: dTitle, content: dContent } as Entry;
+          
+          let dSummary: string | null = null;
+          let dReflection: string | null = null;
+          let dFormat: string | null = null;
+          
+          if (e.ai_summary) dSummary = await decrypt(e.ai_summary, encryptionKey, user.salt);
+          if (e.ai_reflection) dReflection = await decrypt(e.ai_reflection, encryptionKey, user.salt);
+          if (e.ai_format) dFormat = await decrypt(e.ai_format, encryptionKey, user.salt);
+          
+          return { 
+            ...e, 
+            title: dTitle, 
+            content: dContent,
+            ai_summary: dSummary,
+            ai_reflection: dReflection,
+            ai_format: dFormat
+          } as Entry;
         } catch (err) {
           return { ...e, title: "🔒 Decryption Failed", content: "" } as Entry;
         }
@@ -121,7 +198,7 @@ export default function JournalPage() {
         const idNum = Number(urlId);
         const found = decryptedEntries.find(e => e.id === idNum);
         if (found) {
-          handleSelect(found);
+          handleSelect(found, found.id === selectedId);
         } else {
           const { getSingleEntry } = await import("@/lib/actions/journal");
           const e = await getSingleEntry(idNum);
@@ -129,9 +206,25 @@ export default function JournalPage() {
             try {
               const dTitle = await decrypt(e.title, encryptionKey, user.salt);
               const dContent = await decrypt(e.content, encryptionKey, user.salt);
-              handleSelect({ ...e, title: dTitle, content: dContent });
+              
+              let dSummary: string | null = null;
+              let dReflection: string | null = null;
+              let dFormat: string | null = null;
+              
+              if (e.ai_summary) dSummary = await decrypt(e.ai_summary, encryptionKey, user.salt);
+              if (e.ai_reflection) dReflection = await decrypt(e.ai_reflection, encryptionKey, user.salt);
+              if (e.ai_format) dFormat = await decrypt(e.ai_format, encryptionKey, user.salt);
+              
+              handleSelect({ 
+                ...e, 
+                title: dTitle, 
+                content: dContent,
+                ai_summary: dSummary,
+                ai_reflection: dReflection,
+                ai_format: dFormat
+              } as Entry, e.id === selectedId);
             } catch (err) {
-              handleSelect({ ...e, title: "🔒 Decryption Failed", content: "" });
+              handleSelect({ ...e, title: "🔒 Decryption Failed", content: "" }, e.id === selectedId);
             }
           }
         }
@@ -141,7 +234,7 @@ export default function JournalPage() {
         if (today !== lastEntryDate) {
           handleNewEntry();
         } else {
-          handleSelect(decryptedEntries[0]);
+          handleSelect(decryptedEntries[0], decryptedEntries[0].id === selectedId);
         }
       }
     } catch (error) {
@@ -219,14 +312,26 @@ export default function JournalPage() {
     return () => clearTimeout(timer);
   }, [content, title, moodId, handleAutoSave]);
 
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-scroll AI history panel to the bottom when streaming or changing tabs
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
+  }, [streamingText, entryAiHistory, aiHistoryTab]);
+
   const handleNewEntry = () => {
     setSelectedId(null);
     setTitle("");
     setContent("");
     setMoodId(undefined);
     setSelectedDate(new Date());
-    setAiSummary(null);
-    setAiSuggestion(null);
+    setEntryAiSummary(null);
+    setEntryAiReflection(null);
+    setEntryAiFormat(null);
+    setStreamingFeature(null);
+    setStreamingText("");
   };
 
   const handleDelete = async (id: number) => {
@@ -282,11 +387,35 @@ export default function JournalPage() {
 
     setIsAiLoading(true);
     setAiError(null);
-    if (type === "summarize") setAiSummary("");
-    else if (type === "format") setAiSuggestion("");
-    else setAiSummary(""); // Use summary state for reflection too
+    setStreamingFeature(type);
+    setStreamingText("");
+
+    // Open floating history panel and focus/switch to the correct tab
+    setShowAiHistoryPanel(true);
+    setAiHistoryTab(type);
     
     try {
+      // 1. If entry is new, save it first to get an ID so we can associate history items
+      let currentEntryId = selectedId;
+      if (!currentEntryId) {
+        const currentTitle = title || "Untitled " + format(selectedDate || new Date(), "MMM d, yyyy");
+        const eTitle = await encrypt(currentTitle, encryptionKey!, user!.salt);
+        const eContent = await encrypt(content, encryptionKey!, user!.salt);
+        
+        const newId = await saveEntry({
+          title: eTitle,
+          content: eContent,
+          mood_id: moodId,
+        });
+        if (newId) {
+          currentEntryId = newId;
+          setSelectedId(newId);
+          router.replace(`/?id=${newId}`);
+        } else {
+          throw new Error("Could not save entry to generate AI assist");
+        }
+      }
+
       let prompt = "";
       if (type === "summarize") {
         prompt = `Summarize this journal entry in 2-3 sentences. Be practical and grounded: ${content.replace(/<[^>]*>?/gm, '')}`;
@@ -309,15 +438,62 @@ export default function JournalPage() {
         if (done) break;
         const chunk = decoder.decode(value);
         fullResponse += chunk;
-        if (type === "summarize" || type === "reflect") setAiSummary(prev => (prev || "") + chunk);
-        else setAiSuggestion(prev => (prev || "") + chunk);
+        setStreamingText(prev => prev + chunk);
       }
+
+      // 2. Encrypt and save to database in entry_ai_history
+      const encryptedValue = await encrypt(fullResponse, encryptionKey!, user!.salt);
+      const insertId = await createHistoryItem(currentEntryId, type, encryptedValue, type === "format" ? "pending" : undefined);
+
+      // 3. Append to local history list state
+      const newItem: AiHistoryItem = {
+        id: String(insertId),
+        feature: type,
+        content: fullResponse,
+        created_at: new Date().toISOString(),
+        status: type === "format" ? "pending" : undefined
+      };
+      setEntryAiHistory(prev => [...prev, newItem]);
+
+      // 4. Update legacy columns for backward compatibility
+      const { saveEntry: saveAction } = await import("@/lib/actions/journal");
+      const currentTitle = title || "Untitled " + format(selectedDate || new Date(), "MMM d, yyyy");
+      const eTitle = await encrypt(currentTitle, encryptionKey!, user!.salt);
+      const eContent = await encrypt(content, encryptionKey!, user!.salt);
+      
+      const updateData: any = {
+        id: currentEntryId,
+        title: eTitle,
+        content: eContent,
+        mood_id: moodId || undefined,
+      };
+      
+      if (type === "summarize") {
+        updateData.ai_summary = encryptedValue;
+        setEntryAiSummary(fullResponse);
+      } else if (type === "reflect") {
+        updateData.ai_reflection = encryptedValue;
+        setEntryAiReflection(fullResponse);
+      } else if (type === "format") {
+        updateData.ai_format = encryptedValue;
+        setEntryAiFormat(fullResponse);
+      }
+      await saveAction(updateData);
+      loadEntries();
+      
     } catch (err: any) {
       setAiError(err.message || "AI failed to respond");
       setTimeout(() => setAiError(null), 5000);
     } finally {
       setIsAiLoading(false);
+      setStreamingFeature(null);
+      setStreamingText("");
     }
+  };
+
+  const handleDiscardAi = () => {
+    setStreamingFeature(null);
+    setStreamingText("");
   };
 
   const handleQuickEntrySave = async () => {
@@ -330,36 +506,61 @@ export default function JournalPage() {
     loadEntries();
   };
 
-  const handleApplyAi = async () => {
-    if (aiSuggestion) {
-      // 1. Format the content properly
-      let formattedSuggestion = aiSuggestion;
-      if (!formattedSuggestion.includes('<p>') && formattedSuggestion.includes('\n')) {
-        formattedSuggestion = formattedSuggestion.split('\n').map(p => `<p>${p}</p>`).join('');
-      }
-      
-      // 2. Update local state immediately
-      setContent(formattedSuggestion);
-      setAiSuggestion(null);
-
-      // 3. Immediately update the entry in the list to reflect changes in UI
-      if (selectedId) {
-        setEntries(prev => prev.map(e => e.id === selectedId ? { ...e, content: formattedSuggestion } : e));
-      }
-
-      // 4. Force an immediate save to database
-      const { saveEntry: saveAction } = await import("@/lib/actions/journal");
-      const { encrypt: encAction } = await import("@/lib/crypto");
-      const eTitle = await encAction(title, encryptionKey!, user!.salt);
-      const eContent = await encAction(formattedSuggestion, encryptionKey!, user!.salt);
-      
-      await saveAction({
-        id: selectedId || undefined,
-        title: eTitle,
-        content: eContent,
-        mood_id: moodId || undefined
-      });
+  const handleApplyHistoryItem = async (id: string) => {
+    const item = entryAiHistory.find(h => h.id === id);
+    if (!item || item.feature !== "format") return;
+    
+    let formattedSuggestion = formatMarkdown(item.content);
+    setContent(formattedSuggestion);
+    setEntryAiFormat(item.content);
+    
+    // Mark as applied in state
+    setEntryAiHistory(prev => prev.map(h => h.id === id ? { ...h, status: "applied" } : h));
+    
+    if (selectedId) {
+      setEntries(prev => prev.map(e => e.id === selectedId ? { ...e, content: formattedSuggestion } : e));
     }
+    
+    await updateAiHistoryStatus(Number(id), "applied");
+    
+    const { saveEntry: saveAction } = await import("@/lib/actions/journal");
+    const currentTitle = title || "Untitled " + format(selectedDate || new Date(), "MMM d, yyyy");
+    const eTitle = await encrypt(currentTitle, encryptionKey!, user!.salt);
+    const eContent = await encrypt(formattedSuggestion, encryptionKey!, user!.salt);
+    const eFormat = await encrypt(item.content, encryptionKey!, user!.salt);
+    
+    await saveAction({
+      id: selectedId || undefined,
+      title: eTitle,
+      content: eContent,
+      mood_id: moodId || undefined,
+      ai_format: eFormat
+    });
+    
+    loadEntries();
+  };
+
+  const handleDiscardHistoryItem = async (id: string) => {
+    setEntryAiHistory(prev => prev.map(h => h.id === id ? { ...h, status: "discarded" } : h));
+    await updateAiHistoryStatus(Number(id), "discarded");
+  };
+
+  const handleInsertInEditor = (text: string) => {
+    const formatted = formatMarkdown(text);
+    setContent(prev => {
+      const cleaned = (prev || "").trim();
+      if (!cleaned || cleaned === "<p></p>" || cleaned === "<p><br></p>") {
+        return formatted;
+      }
+      return prev + "<br/>" + formatted;
+    });
+  };
+
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const handleCopyToClipboard = (id: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
   };
 
   if (!isAuth) return <LandingPage />;
@@ -407,7 +608,7 @@ export default function JournalPage() {
               <PopoverTrigger className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "h-10 px-3 lg:px-4 text-xs font-medium text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 rounded-xl border border-zinc-100 dark:border-zinc-900 bg-white/50 dark:bg-black/50 backdrop-blur-sm")}>
                 <Sparkles className={`h-4 w-4 lg:mr-2 ${isAiLoading ? 'animate-pulse' : ''}`} /> <span className="hidden lg:inline">AI Assist</span>
               </PopoverTrigger>
-              <PopoverContent className="w-48 p-2 rounded-xl border-zinc-100 dark:border-zinc-900 shadow-2xl" align="end">
+              <PopoverContent className="w-52 p-2 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black shadow-2xl" align="end">
                 <div className="px-2 py-1.5 mb-1 text-[10px] font-bold uppercase tracking-widest text-zinc-400 flex justify-between">
                   <span>Credits</span>
                   <span className="text-zinc-900 dark:text-zinc-100">{user?.credits ?? 0}/10</span>
@@ -421,6 +622,24 @@ export default function JournalPage() {
                 <Button variant="ghost" className="w-full justify-start text-xs h-9 rounded-lg" onClick={() => handleAiAssist("reflect")}>
                   <Bot className="h-3.5 w-3.5 mr-2 text-purple-400" /> Deep Reflection
                 </Button>
+
+                {entryAiHistory.length > 0 && (
+                  <>
+                    <Separator className="my-1.5 bg-zinc-100 dark:bg-zinc-900" />
+                    <div className="px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-zinc-400 dark:text-zinc-600">
+                      AI History Log
+                    </div>
+                    <Button variant="ghost" className="w-full justify-start text-xs h-9 rounded-lg" onClick={() => { setShowAiHistoryPanel(true); setAiHistoryTab("summarize"); }}>
+                      <LayoutDashboard className="h-3.5 w-3.5 mr-2 text-zinc-400 dark:text-zinc-600" /> View Summaries
+                    </Button>
+                    <Button variant="ghost" className="w-full justify-start text-xs h-9 rounded-lg" onClick={() => { setShowAiHistoryPanel(true); setAiHistoryTab("format"); }}>
+                      <Palette className="h-3.5 w-3.5 mr-2 text-zinc-400 dark:text-zinc-600" /> View Polished Flows
+                    </Button>
+                    <Button variant="ghost" className="w-full justify-start text-xs h-9 rounded-lg" onClick={() => { setShowAiHistoryPanel(true); setAiHistoryTab("reflect"); }}>
+                      <Bot className="h-3.5 w-3.5 mr-2 text-zinc-400 dark:text-zinc-600" /> View Reflections
+                    </Button>
+                  </>
+                )}
               </PopoverContent>
             </Popover>
           </div>
@@ -521,6 +740,17 @@ export default function JournalPage() {
           </div>
         </div>
 
+
+
+
+
+
+
+
+
+
+
+
         <div className="h-16 border-t border-zinc-100 dark:border-zinc-900 bg-white/80 dark:bg-black/80 backdrop-blur-md px-4 lg:px-8 flex items-center justify-between text-[10px] text-zinc-400 uppercase tracking-[0.2em] font-bold z-20">
           <div className="flex items-center gap-4 lg:gap-6">
             <span className="flex items-center gap-2"><Hash className="h-3 w-3" /> {(content || "").replace(/<[^>]*>?/gm, '').split(/\s+/).filter(Boolean).length} <span className="hidden lg:inline">Words</span></span>
@@ -562,45 +792,152 @@ export default function JournalPage() {
         </div>
 
         <AnimatePresence>
-          {(aiSummary !== null || aiSuggestion !== null) && (
-            <motion.div initial={{ opacity: 0, y: 20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20, scale: 0.95 }} className="fixed bottom-20 right-4 left-4 lg:bottom-24 lg:right-8 lg:left-auto lg:w-[400px] border border-zinc-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md rounded-xl shadow-2xl flex flex-col z-50 overflow-hidden">
-              <div className="p-5 flex items-center justify-between border-b border-zinc-100 dark:border-zinc-900 bg-zinc-50/50 dark:bg-zinc-900/50">
+          {(showAiHistoryPanel || streamingFeature !== null) && (
+            <motion.div 
+              initial={{ opacity: 0, y: 20, scale: 0.95 }} 
+              animate={{ opacity: 1, y: 0, scale: 1 }} 
+              exit={{ opacity: 0, y: 20, scale: 0.95 }} 
+              className="fixed bottom-4 left-4 right-4 md:bottom-24 md:right-8 md:left-auto md:w-[420px] max-h-[80vh] md:max-h-[70vh] border border-zinc-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md rounded-xl shadow-2xl flex flex-col z-50 overflow-hidden"
+            >
+              {/* Header */}
+              <div className="p-4 flex items-center justify-between border-b border-zinc-100 dark:border-zinc-900 bg-zinc-50/50 dark:bg-zinc-900/50 shrink-0">
                 <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400">
-                  <Sparkles className="h-3.5 w-3.5" /> {aiSummary !== null ? "AI Reflection" : "Polished Flow"}
+                  <Sparkles className="h-3.5 w-3.5 text-indigo-500 animate-pulse" /> 
+                  AI Journal Assistant
                 </div>
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-zinc-400 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-800" onClick={() => { setAiSummary(null); setAiSuggestion(null); }}>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-7 w-7 text-zinc-400 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-800" 
+                  onClick={() => { setShowAiHistoryPanel(false); setStreamingFeature(null); setStreamingText(""); }}
+                >
                   <X className="h-4 w-4" />
                 </Button>
               </div>
-              <ScrollArea className="max-h-[60vh] p-6">
-                <div className="prose prose-zinc dark:prose-invert prose-sm max-w-none">
-                  {aiSummary !== null ? (
-                    aiSummary === "" ? (
-                      <div className="text-base leading-relaxed italic text-zinc-400 animate-pulse font-serif">
-                        Dainiki is contemplating your entry...
-                      </div>
-                    ) : (
-                      <div className="text-base leading-relaxed italic text-zinc-600 dark:text-zinc-400 font-serif" dangerouslySetInnerHTML={{ __html: formatMarkdown(aiSummary) }} />
-                    )
-                  ) : (
-                    aiSuggestion === "" ? (
-                      <div className="leading-relaxed text-zinc-400 animate-pulse">
-                        Dainiki is weaving your thoughts...
-                      </div>
-                    ) : (
-                      <div className="leading-relaxed text-zinc-700 dark:text-zinc-300" dangerouslySetInnerHTML={{ __html: formatMarkdown(aiSuggestion || "") }} />
-                    )
-                  )}
-                </div>
-              </ScrollArea>
-              <div className="p-5 border-t border-zinc-100 dark:border-zinc-900 bg-zinc-50/50 dark:bg-zinc-900/50 space-y-4">
-                {aiSuggestion !== null && (
-                  <div className="flex gap-2">
-                    <Button className="flex-1 rounded-xl h-10 text-xs font-bold uppercase tracking-wider" onClick={handleApplyAi}>Apply Change</Button>
-                    <Button variant="outline" className="flex-1 rounded-xl h-10 text-xs font-bold uppercase tracking-wider bg-transparent" onClick={() => setAiSuggestion(null)}>Discard</Button>
+
+              {/* Tabs */}
+              <div className="flex border-b border-zinc-100 dark:border-zinc-900 bg-zinc-50/20 dark:bg-zinc-950/20 px-2 pt-1 pb-0 shrink-0">
+                <button 
+                  onClick={() => setAiHistoryTab("summarize")} 
+                  className={cn("flex-1 text-center py-2.5 text-[9px] font-black uppercase tracking-widest border-b-2 transition-all", aiHistoryTab === "summarize" ? "border-zinc-800 dark:border-zinc-200 text-zinc-900 dark:text-zinc-100" : "border-transparent text-zinc-400 hover:text-zinc-600")}
+                >
+                  Summary
+                </button>
+                <button 
+                  onClick={() => setAiHistoryTab("format")} 
+                  className={cn("flex-1 text-center py-2.5 text-[9px] font-black uppercase tracking-widest border-b-2 transition-all", aiHistoryTab === "format" ? "border-zinc-800 dark:border-zinc-200 text-zinc-900 dark:text-zinc-100" : "border-transparent text-zinc-400 hover:text-zinc-600")}
+                >
+                  Polished
+                </button>
+                <button 
+                  onClick={() => setAiHistoryTab("reflect")} 
+                  className={cn("flex-1 text-center py-2.5 text-[9px] font-black uppercase tracking-widest border-b-2 transition-all", aiHistoryTab === "reflect" ? "border-zinc-800 dark:border-zinc-200 text-zinc-900 dark:text-zinc-100" : "border-transparent text-zinc-400 hover:text-zinc-600")}
+                >
+                  Reflection
+                </button>
+              </div>
+
+              {/* Scrollable Log */}
+              <div 
+                ref={scrollContainerRef}
+                className="flex-1 overflow-y-auto p-4 min-h-0 custom-scrollbar"
+              >
+                {entryAiHistory.filter(h => h.feature === aiHistoryTab).length === 0 && streamingFeature !== aiHistoryTab ? (
+                  <div className="h-48 flex flex-col items-center justify-center text-center p-6">
+                    <Sparkles className="h-8 w-8 text-zinc-300 dark:text-zinc-700 mb-3 stroke-[1.5]" />
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed font-medium">
+                      No {aiHistoryTab === "summarize" ? "summaries" : aiHistoryTab === "format" ? "polished versions" : "reflections"} generated yet.
+                    </p>
+                    <p className="text-[10px] text-zinc-400 dark:text-zinc-600 mt-1 uppercase tracking-wider font-bold">
+                      Click AI Assist to create one
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {entryAiHistory
+                      .filter(h => h.feature === aiHistoryTab)
+                      .map((item) => (
+                        <div 
+                          key={item.id} 
+                          className="border border-zinc-100 dark:border-zinc-900 bg-zinc-50/30 dark:bg-zinc-900/30 rounded-xl p-4 text-left shadow-sm hover:border-zinc-200 dark:hover:border-zinc-800 transition-colors"
+                        >
+                          <div className="flex items-center justify-between mb-3 text-[9px] font-black uppercase tracking-widest text-zinc-400">
+                            <span className="flex items-center gap-1.5">
+                              {item.feature === "summarize" ? <LayoutDashboard className="h-3 w-3 text-blue-500" /> : item.feature === "format" ? <Palette className="h-3 w-3 text-amber-500" /> : <Bot className="h-3 w-3 text-purple-500" />}
+                              {item.feature === "summarize" ? "Summary" : item.feature === "format" ? "Polished Flow" : "Deep Reflection"}
+                            </span>
+                            <span>
+                              {item.created_at ? format(new Date(item.created_at), "MMM d, h:mm a") : ""}
+                            </span>
+                          </div>
+
+                          <div className="prose prose-zinc dark:prose-invert prose-sm max-w-none text-zinc-700 dark:text-zinc-300 text-xs leading-relaxed">
+                            <div dangerouslySetInnerHTML={{ __html: formatMarkdown(item.content) }} />
+                          </div>
+
+                          {/* Card Actions */}
+                          {item.feature === "format" && (
+                            <div className="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-900 flex items-center justify-between">
+                              {item.status === "applied" ? (
+                                <div className="flex items-center gap-1.5 text-[9px] text-emerald-600 dark:text-emerald-400 font-black uppercase tracking-wider">
+                                  <Check className="h-3.5 w-3.5 stroke-[3]" /> Applied to Editor
+                                </div>
+                              ) : item.status === "discarded" ? (
+                                <div className="text-[9px] text-zinc-400 dark:text-zinc-600 font-black uppercase tracking-wider">
+                                  Discarded
+                                </div>
+                              ) : (
+                                <div className="flex gap-2 w-full">
+                                  <Button size="sm" className="h-8 text-[9px] font-bold uppercase tracking-wider flex-1 rounded-lg" onClick={() => handleApplyHistoryItem(item.id)}>Apply Change</Button>
+                                  <Button size="sm" variant="outline" className="h-8 text-[9px] font-bold uppercase tracking-wider flex-1 rounded-lg bg-transparent" onClick={() => handleDiscardHistoryItem(item.id)}>Discard</Button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {(item.feature === "summarize" || item.feature === "reflect") && (
+                            <div className="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-900 flex gap-2 w-full">
+                              <Button size="sm" variant="outline" className="h-8 text-[9px] font-bold uppercase tracking-wider flex-1 rounded-lg bg-transparent" onClick={() => handleCopyToClipboard(item.id, item.content)}>
+                                {copiedId === item.id ? <span className="text-emerald-600 dark:text-emerald-400">Copied!</span> : "Copy"}
+                              </Button>
+                              <Button size="sm" variant="outline" className="h-8 text-[9px] font-bold uppercase tracking-wider flex-1 rounded-lg bg-transparent" onClick={() => handleInsertInEditor(item.content)}>Insert</Button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
                   </div>
                 )}
-                <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest text-center">Generated by Gemini</p>
+
+                {/* Streaming Item Card */}
+                {streamingFeature === aiHistoryTab && (
+                  <div className="border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 rounded-xl p-4 text-left shadow-sm animate-pulse mt-4">
+                    <div className="flex items-center gap-1.5 mb-3 text-[9px] font-black uppercase tracking-widest text-zinc-400">
+                      <Sparkles className="h-3.5 w-3.5 text-indigo-500 animate-spin" />
+                      Generating...
+                    </div>
+                    <div className="prose prose-zinc dark:prose-invert prose-sm max-w-none text-zinc-500 text-xs leading-relaxed">
+                      {streamingText === "" ? (
+                        <span>Dainiki is contemplating...</span>
+                      ) : (
+                        <div dangerouslySetInnerHTML={{ __html: formatMarkdown(streamingText) }} />
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 border-t border-zinc-100 dark:border-zinc-900 bg-zinc-50/50 dark:bg-zinc-900/50 shrink-0 flex items-center justify-between">
+                <Button 
+                  variant="outline" 
+                  className="rounded-lg h-9 text-[9px] font-bold uppercase tracking-wider bg-transparent"
+                  onClick={() => { setShowAiHistoryPanel(false); setStreamingFeature(null); setStreamingText(""); }}
+                >
+                  Close Panel
+                </Button>
+                <div className="text-[8px] text-zinc-400 font-bold uppercase tracking-widest flex items-center gap-1">
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" /> E2E Encrypted
+                </div>
               </div>
             </motion.div>
           )}

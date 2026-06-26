@@ -10,21 +10,29 @@ export interface Entry {
   image_paths?: string[];
   is_archived?: boolean;
   is_deleted?: boolean;
+  ai_summary?: string | null;
+  ai_reflection?: string | null;
+  ai_format?: string | null;
+  ai_history?: string | null;
   created_at?: string;
   updated_at?: string;
 }
 
 export async function createEntry(entry: Entry) {
   const result = await db.execute({
-    sql: `INSERT INTO entries (user_id, title, content, mood_id, tags, image_paths)
-          VALUES (?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO entries (user_id, title, content, mood_id, tags, image_paths, ai_summary, ai_reflection, ai_format, ai_history)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       entry.user_id,
       entry.title,
       entry.content,
       entry.mood_id || null,
       JSON.stringify(entry.tags || []),
-      JSON.stringify(entry.image_paths || [])
+      JSON.stringify(entry.image_paths || []),
+      entry.ai_summary || null,
+      entry.ai_reflection || null,
+      entry.ai_format || null,
+      entry.ai_history || null
     ]
   });
 
@@ -62,6 +70,22 @@ export async function updateEntry(id: number, userId: number, entry: Partial<Ent
   if (entry.is_deleted !== undefined) {
     fields.push("is_deleted = ?");
     values.push(entry.is_deleted ? 1 : 0);
+  }
+  if (entry.ai_summary !== undefined) {
+    fields.push("ai_summary = ?");
+    values.push(entry.ai_summary);
+  }
+  if (entry.ai_reflection !== undefined) {
+    fields.push("ai_reflection = ?");
+    values.push(entry.ai_reflection);
+  }
+  if (entry.ai_format !== undefined) {
+    fields.push("ai_format = ?");
+    values.push(entry.ai_format);
+  }
+  if (entry.ai_history !== undefined) {
+    fields.push("ai_history = ?");
+    values.push(entry.ai_history);
   }
 
   fields.push("updated_at = CURRENT_TIMESTAMP");
@@ -116,7 +140,7 @@ export async function getEntries(userId: number, options: { view?: "active" | "a
     sql: query,
     args: [userId]
   });
-  
+
   return result.rows.map(row => {
     const e = { ...row } as any;
     return {
@@ -198,6 +222,51 @@ export async function searchEntries(term: string, userId: number, options: { vie
     user_id: Number(e.user_id),
     mood_id: e.mood_id ? Number(e.mood_id) : undefined,
     tags: JSON.parse(e.tags || "[]"),
-    image_paths: JSON.parse(e.image_paths || "[]")
   }));
 }
+
+export async function createAiHistoryItem(
+  entryId: number,
+  feature: string,
+  content: string,
+  status: string = "pending"
+) {
+  const result = await db.execute({
+    sql: `INSERT INTO entry_ai_history (entry_id, feature, content, status)
+          VALUES (?, ?, ?, ?)`,
+    args: [entryId, feature, content, status]
+  });
+  return Number(result.lastInsertRowid);
+}
+
+export async function getAiHistoryForEntry(entryId: number) {
+  const result = await db.execute({
+    sql: `SELECT * FROM entry_ai_history
+          WHERE entry_id = ?
+          ORDER BY created_at ASC`,
+    args: [entryId]
+  });
+  return result.rows.map(row => ({
+    id: String(row.id),
+    entry_id: Number(row.entry_id),
+    feature: String(row.feature) as "summarize" | "format" | "reflect",
+    content: String(row.content),
+    status: row.status ? String(row.status) as "pending" | "applied" | "discarded" : undefined,
+    created_at: String(row.created_at)
+  }));
+}
+
+export async function updateAiHistoryItemStatus(id: number, status: string) {
+  return await db.execute({
+    sql: `UPDATE entry_ai_history SET status = ? WHERE id = ?`,
+    args: [status, id]
+  });
+}
+
+export async function clearAiHistoryForEntry(entryId: number) {
+  return await db.execute({
+    sql: `DELETE FROM entry_ai_history WHERE entry_id = ?`,
+    args: [entryId]
+  });
+}
+
