@@ -40,12 +40,10 @@ export function SecurityGate({ children }: { children: React.ReactNode }) {
 
     window.addEventListener("beforeunload", handleBeforeUnload);
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("blur", handleVisibilityChange); // Also lock on window blur (e.g. alt-tab)
 
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("blur", handleVisibilityChange);
     };
   }, [isAuth, isVerified, lock]);
 
