@@ -79,18 +79,35 @@ export async function encrypt(text: string, password: string, salt: string): Pro
 }
 
 export async function decrypt(encoded: string, password: string, salt: string): Promise<string> {
+  if (!encoded || typeof encoded !== "string" || encoded.trim() === "") return "";
+  
   const decoder = new TextDecoder();
-  const combined = base64ToArrayBuffer(encoded);
+  let combined: Uint8Array;
+  try {
+    combined = base64ToArrayBuffer(encoded);
+  } catch (e) {
+    return encoded;
+  }
+
+  if (combined.length < 28) {
+    // AES-GCM ciphertext must have at least 12 bytes IV + 16 bytes GCM auth tag
+    return encoded; 
+  }
 
   const iv = combined.slice(0, 12);
   const encrypted = combined.slice(12);
   const key = await deriveKey(password, salt);
 
-  const decrypted = await crypto.subtle.decrypt(
-    { name: ALGORITHM, iv },
-    key,
-    encrypted
-  );
-
-  return decoder.decode(decrypted);
+  try {
+    const decrypted = await crypto.subtle.decrypt(
+      { name: ALGORITHM, iv },
+      key,
+      encrypted
+    );
+    return decoder.decode(decrypted);
+  } catch (err) {
+    console.error("AES-GCM decryption failed:", err);
+    return "🔒 Decryption Failed";
+  }
 }
+

@@ -46,19 +46,48 @@ export function SecurityGate({ children }: { children: React.ReactNode }) {
     setIsUnlocking(true);
     setUnlockError("");
     try {
-      const res = await login(user.username, unlockPassword);
-      if (res.success) {
-        // Verify we can decrypt the key
-        const userData = await getUserData(user.username);
-        if (userData && userData.master_key_password && userData.salt) {
-          const masterKey = await decrypt(userData.master_key_password, unlockPassword, userData.salt);
-          setEncryptionKey(masterKey);
+      if (navigator.onLine) {
+        const res = await login(user.username, unlockPassword);
+        if (res.success) {
+          let userData: any = null;
+          try {
+            userData = await getUserData(user.username);
+          } catch (err) {
+            console.warn("Could not fetch master key from server, falling back to local cache:", err);
+            const rawCache = localStorage.getItem("dainiki_cached_user");
+            if (rawCache) userData = JSON.parse(rawCache);
+          }
+
+          if (userData && userData.master_key_password && userData.salt) {
+            const masterKey = await decrypt(userData.master_key_password, unlockPassword, userData.salt);
+            if (masterKey && masterKey !== "🔒 Decryption Failed") {
+              setEncryptionKey(masterKey);
+              setUnlockPassword("");
+            } else {
+              throw new Error("Invalid password decryption");
+            }
+          } else {
+            setEncryptionKey(unlockPassword);
+            setUnlockPassword("");
+          }
         } else {
-          setEncryptionKey(unlockPassword);
+          setUnlockError("Incorrect password");
         }
-        setUnlockPassword("");
       } else {
-        setUnlockError("Incorrect password");
+        // OFFLINE: Verify using local cache
+        const rawCache = localStorage.getItem("dainiki_cached_user");
+        if (rawCache) {
+          const userData = JSON.parse(rawCache);
+          if (userData && userData.master_key_password && userData.salt) {
+            const masterKey = await decrypt(userData.master_key_password, unlockPassword, userData.salt);
+            if (masterKey && masterKey !== "🔒 Decryption Failed") {
+              setEncryptionKey(masterKey);
+              setUnlockPassword("");
+              return;
+            }
+          }
+        }
+        setUnlockError("Decryption failed. Incorrect password?");
       }
     } catch (err) {
       setUnlockError("Decryption failed. Incorrect password?");
@@ -73,23 +102,56 @@ export function SecurityGate({ children }: { children: React.ReactNode }) {
     setIsUnlocking(true);
     setUnlockError("");
     try {
-      const res = await loginWithPin(user.username, unlockPin);
-      if (res.success) {
-        // Verify we can decrypt the key
-        const userData = await getUserData(user.username);
-        if (userData && userData.master_key_pin && userData.salt) {
-          const masterKey = await decrypt(userData.master_key_pin, unlockPin, userData.salt);
-          setEncryptionKey(masterKey);
-        } else if (userData && !userData.master_key_pin) {
-          setUnlockError("No PIN set for this vault.");
-          setIsUnlocking(false);
-          return;
+      if (navigator.onLine) {
+        const res = await loginWithPin(user.username, unlockPin);
+        if (res.success) {
+          let userData: any = null;
+          try {
+            userData = await getUserData(user.username);
+          } catch (err) {
+            console.warn("Could not fetch master key from server, falling back to local cache:", err);
+            const rawCache = localStorage.getItem("dainiki_cached_user");
+            if (rawCache) userData = JSON.parse(rawCache);
+          }
+
+          if (userData && userData.master_key_pin && userData.salt) {
+            const masterKey = await decrypt(userData.master_key_pin, unlockPin, userData.salt);
+            if (masterKey && masterKey !== "🔒 Decryption Failed") {
+              setEncryptionKey(masterKey);
+              setUnlockPin("");
+            } else {
+              throw new Error("Invalid PIN decryption");
+            }
+          } else if (userData && !userData.master_key_pin) {
+            setUnlockError("No PIN set for this vault.");
+            setIsUnlocking(false);
+            return;
+          } else {
+            setEncryptionKey(unlockPin);
+            setUnlockPin("");
+          }
         } else {
-          setEncryptionKey(unlockPin);
+          setUnlockError("Incorrect PIN");
         }
-        setUnlockPin("");
       } else {
-        setUnlockError("Incorrect PIN");
+        // OFFLINE: Verify using local cache
+        const rawCache = localStorage.getItem("dainiki_cached_user");
+        if (rawCache) {
+          const userData = JSON.parse(rawCache);
+          if (userData && userData.master_key_pin && userData.salt) {
+            const masterKey = await decrypt(userData.master_key_pin, unlockPin, userData.salt);
+            if (masterKey && masterKey !== "🔒 Decryption Failed") {
+              setEncryptionKey(masterKey);
+              setUnlockPin("");
+              return;
+            }
+          } else if (userData && !userData.master_key_pin) {
+            setUnlockError("No PIN set for this vault.");
+            setIsUnlocking(false);
+            return;
+          }
+        }
+        setUnlockError("Decryption failed. Incorrect PIN?");
       }
     } catch (err) {
       setUnlockError("Decryption failed. Incorrect PIN?");

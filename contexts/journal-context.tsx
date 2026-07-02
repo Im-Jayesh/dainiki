@@ -2,7 +2,15 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/auth-context";
-import { getLocalEntries, saveLocalEntries, deleteLocalEntry, clearLocalDb } from "@/lib/indexeddb";
+import { 
+  getLocalEntries, 
+  saveLocalEntries, 
+  deleteLocalEntry, 
+  clearLocalDb,
+  getPendingOperations,
+  addPendingOperation,
+  deletePendingOperation
+} from "@/lib/indexeddb";
 import { 
   syncEntriesList, 
   fetchEntriesByIds, 
@@ -176,7 +184,6 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
       setEntries([]);
       setLoading(true);
       prevCredsRef.current = null;
-      clearLocalDb().catch(console.error);
       return;
     }
 
@@ -212,6 +219,66 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, encryptionKey, decryptEntry, sync]);
 
+  // Offline pending queue sync playback
+  const syncOfflineQueue = useCallback(async () => {
+    if (!navigator.onLine || !user || !encryptionKey) return;
+
+    try {
+      const pendingOps = await getPendingOperations();
+      if (pendingOps.length === 0) return;
+
+      console.log(`[Offline Sync] Found ${pendingOps.length} pending operations. Starting playback...`);
+
+      for (const op of pendingOps) {
+        try {
+          if (op.action === "save") {
+            await saveEntry(op.data);
+          } else if (op.action === "delete") {
+            await serverDeleteEntry(op.entryId, op.data?.permanent);
+          } else if (op.action === "archive") {
+            await serverToggleArchive(op.entryId, op.data?.archived);
+          }
+          await deletePendingOperation(op.id);
+        } catch (err) {
+          console.error(`[Offline Sync] Failed to replay operation ${op.id}:`, err);
+          break; // Stop execution on error to preserve order
+        }
+      }
+
+      await sync();
+    } catch (err) {
+      console.error("[Offline Sync Error]:", err);
+    }
+  }, [user, encryptionKey, sync]);
+
+  // Sync offline queue when coming back online
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleOnline = () => {
+      syncOfflineQueue();
+    };
+
+    window.addEventListener("online", handleOnline);
+
+    if (navigator.onLine) {
+      syncOfflineQueue();
+    }
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [syncOfflineQueue]);
+
+  // Register PWA Service Worker
+  useEffect(() => {
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js")
+        .then((reg) => console.log("[PWA] Service Worker registered:", reg.scope))
+        .catch((err) => console.error("[PWA] Service Worker registration failed:", err));
+    }
+  }, []);
+
   // Save/Create entry action
   const saveJournalEntry = useCallback(async (data: {
     id?: number;
@@ -224,51 +291,107 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
     ai_format?: string | null;
     ai_history?: string | null;
   }) => {
-    // 1. Save to server database
-    const savedId = await saveEntry(data);
-    const targetId = Number(data.id || savedId);
+    if (!user || !encryptionKey) throw new Error("Unauthorized");
 
-    // 2. Fetch the newly saved record from server to ensure accurate synced payload
-    const updatedRows = await fetchEntriesByIds([targetId]);
-    if (updatedRows.length > 0 && user && encryptionKey) {
-      const serverRecord = updatedRows[0];
-      
-      // 3. Save to local IndexedDB
-      await saveLocalEntries([serverRecord]);
+    const isNew = !data.id;
+    const targetId = isNew ? Math.floor(Date.now() + Math.random() * 1000) : Number(data.id);
 
-      // 4. Decrypt and merge into context state
-      const decrypted = await decryptEntry(serverRecord, encryptionKey, user.salt);
+    const record = {
+      id: targetId,
+      user_id: user.userId,
+      title: data.title,
+      content: data.content,
+      mood_id: data.mood_id || null,
+      tags: JSON.stringify(data.tags || []),
+      image_paths: "[]",
+      is_archived: 0,
+      is_deleted: 0,
+      ai_summary: data.ai_summary || null,
+      ai_reflection: data.ai_reflection || null,
+      ai_format: data.ai_format || null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    if (navigator.onLine) {
+      const savedId = await saveEntry(data);
+      const finalId = Number(data.id || savedId);
+      record.id = finalId;
+
+      await saveLocalEntries([record]);
+
+      const decrypted = await decryptEntry(record, encryptionKey, user.salt);
+      setEntries(prev => {
+        const filtered = prev.filter(e => e.id !== finalId);
+        const merged = [decrypted, ...filtered];
+        return merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      });
+      return finalId;
+    } else {
+      console.log(`[Offline Save] Saving entry ${targetId} locally`);
       
+      await saveLocalEntries([record]);
+
+      await addPendingOperation({
+        action: "save",
+        entryId: targetId,
+        data: {
+          id: isNew ? undefined : targetId,
+          title: data.title,
+          content: data.content,
+          mood_id: data.mood_id,
+          tags: data.tags,
+          ai_summary: data.ai_summary,
+          ai_reflection: data.ai_reflection,
+          ai_format: data.ai_format,
+          ai_history: data.ai_history
+        }
+      });
+
+      const decrypted = await decryptEntry(record, encryptionKey, user.salt);
       setEntries(prev => {
         const filtered = prev.filter(e => e.id !== targetId);
         const merged = [decrypted, ...filtered];
-        // Keep sorted
         return merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       });
+      return targetId;
     }
-
-    return targetId;
   }, [user, encryptionKey, decryptEntry]);
 
   // Delete entry action
   const deleteJournalEntry = useCallback(async (id: number, permanent = false) => {
-    // 1. Delete on server
-    await serverDeleteEntry(id, permanent);
-
-    // 2. Delete locally in IndexedDB
-    if (permanent) {
-      await deleteLocalEntry(id);
+    if (navigator.onLine) {
+      await serverDeleteEntry(id, permanent);
+      if (permanent) {
+        await deleteLocalEntry(id);
+      } else {
+        const local = await getLocalEntries();
+        const match = local.find(e => Number(e.id) === id);
+        if (match) {
+          match.is_deleted = 1;
+          await saveLocalEntries([match]);
+        }
+      }
     } else {
-      // For soft delete, update the local DB record is_deleted = 1
-      const local = await getLocalEntries();
-      const match = local.find(e => Number(e.id) === id);
-      if (match) {
-        match.is_deleted = 1;
-        await saveLocalEntries([match]);
+      console.log(`[Offline Delete] Queuing delete for entry ${id}`);
+      await addPendingOperation({
+        action: "delete",
+        entryId: id,
+        data: { permanent }
+      });
+
+      if (permanent) {
+        await deleteLocalEntry(id);
+      } else {
+        const local = await getLocalEntries();
+        const match = local.find(e => Number(e.id) === id);
+        if (match) {
+          match.is_deleted = 1;
+          await saveLocalEntries([match]);
+        }
       }
     }
 
-    // 3. Update context state
     setEntries(prev => {
       if (permanent) {
         return prev.filter(e => e.id !== id);
@@ -280,37 +403,62 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
 
   // Toggle archive entry action
   const toggleJournalArchive = useCallback(async (id: number, archived: boolean) => {
-    // 1. Update on server
-    await serverToggleArchive(id, archived);
+    if (navigator.onLine) {
+      await serverToggleArchive(id, archived);
+      const local = await getLocalEntries();
+      const match = local.find(e => Number(e.id) === id);
+      if (match) {
+        match.is_archived = archived ? 1 : 0;
+        await saveLocalEntries([match]);
+      }
+    } else {
+      console.log(`[Offline Archive] Queuing archive for entry ${id}`);
+      await addPendingOperation({
+        action: "archive",
+        entryId: id,
+        data: { archived }
+      });
 
-    // 2. Update locally in IndexedDB
-    const local = await getLocalEntries();
-    const match = local.find(e => Number(e.id) === id);
-    if (match) {
-      match.is_archived = archived ? 1 : 0;
-      await saveLocalEntries([match]);
+      const local = await getLocalEntries();
+      const match = local.find(e => Number(e.id) === id);
+      if (match) {
+        match.is_archived = archived ? 1 : 0;
+        await saveLocalEntries([match]);
+      }
     }
 
-    // 3. Update context state
     setEntries(prev => prev.map(e => e.id === id ? { ...e, is_archived: archived } : e));
   }, []);
 
   // Restore entry action
   const restoreJournalEntry = useCallback(async (id: number) => {
-    // 1. Restore on server
-    await serverRestoreEntry(id);
+    if (navigator.onLine) {
+      await serverRestoreEntry(id);
+      const local = await getLocalEntries();
+      const match = local.find(e => Number(e.id) === id);
+      if (match) {
+        match.is_deleted = 0;
+        await saveLocalEntries([match]);
+      }
+    } else {
+      console.log(`[Offline Restore] Queuing restore for entry ${id}`);
+      await addPendingOperation({
+        action: "save",
+        entryId: id,
+        data: { id, is_deleted: 0 }
+      });
 
-    // 2. Update locally in IndexedDB
-    const local = await getLocalEntries();
-    const match = local.find(e => Number(e.id) === id);
-    if (match) {
-      match.is_deleted = 0;
-      await saveLocalEntries([match]);
+      const local = await getLocalEntries();
+      const match = local.find(e => Number(e.id) === id);
+      if (match) {
+        match.is_deleted = 0;
+        await saveLocalEntries([match]);
+      }
     }
 
-    // 3. Update context state
     setEntries(prev => prev.map(e => e.id === id ? { ...e, is_deleted: false } : e));
   }, []);
+
 
 
   return (

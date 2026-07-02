@@ -73,27 +73,89 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (auth) {
         const session = await getSession();
         if (session) {
-          const data = await getUserData(session.username);
-          setUser({ 
-            userId: Number(session.userId), 
-            username: session.username, 
+          let data: any = null;
+          try {
+            data = await getUserData(session.username);
+            // Cache user metadata in localStorage for offline session recovery
+            if (data && typeof window !== "undefined") {
+              const cachedUser = {
+                userId: Number(session.userId),
+                username: session.username,
+                salt: data.salt || "",
+                credits: data.credits ?? 10,
+                role: data.role || "user",
+                settings: data.settings || undefined,
+                isVerified: session.isVerified || false,
+                master_key_password: data.master_key_password || null,
+                master_key_pin: data.master_key_pin || null
+              };
+              localStorage.setItem("dainiki_cached_user", JSON.stringify(cachedUser));
+            }
+          } catch (e) {
+            console.warn("[Auth Offline Warning] Could not fetch user details from server. Loading local cache:", e);
+            if (typeof window !== "undefined") {
+              const rawCache = localStorage.getItem("dainiki_cached_user");
+              if (rawCache) {
+                try {
+                  data = JSON.parse(rawCache);
+                } catch {}
+              }
+            }
+          }
+
+          const finalUser = {
+            userId: Number(session.userId),
+            username: session.username,
             salt: data?.salt || "",
             credits: data?.credits ?? 10,
             role: data?.role || "user",
-            settings: data?.settings || undefined
+            settings: data?.settings || undefined,
+            isVerified: session.isVerified || data?.isVerified || false
+          };
+
+          setUser({ 
+            userId: finalUser.userId, 
+            username: finalUser.username, 
+            salt: finalUser.salt || "",
+            credits: finalUser.credits ?? 10,
+            role: finalUser.role || "user",
+            settings: finalUser.settings || undefined
           });
-          setIsVerified(session.isVerified || false);
+          setIsVerified(finalUser.isVerified);
         }
       } else {
         setUser(null);
         setIsVerified(false);
       }
     } catch (error) {
-      console.error("Failed to check auth status:", error);
+      console.warn("Failed to check auth status from server. Attempting offline cache recovery:", error);
+      if (typeof window !== "undefined") {
+        const rawCache = localStorage.getItem("dainiki_cached_user");
+        if (rawCache) {
+          try {
+            const cachedUser = JSON.parse(rawCache);
+            setIsAuth(true);
+            setIsVerified(cachedUser.isVerified);
+            setUser({
+              userId: cachedUser.userId,
+              username: cachedUser.username,
+              salt: cachedUser.salt,
+              credits: cachedUser.credits,
+              role: cachedUser.role,
+              settings: cachedUser.settings
+            });
+            console.log("[Auth Offline Recovery] Restored user session from localStorage:", cachedUser.username);
+            return;
+          } catch {}
+        }
+      }
+      setUser(null);
+      setIsVerified(false);
     } finally {
       setIsLoading(false);
     }
   }, []);
+
 
   useEffect(() => {
     refreshStatus();
@@ -105,6 +167,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsVerified(false);
     setUser(null);
     setEncryptionKey(null);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("dainiki_cached_user");
+      try {
+        const { clearLocalDb } = await import("@/lib/indexeddb");
+        await clearLocalDb();
+      } catch (e) {
+        console.error("Failed to clear local db on logout:", e);
+      }
+    }
   };
 
   return (

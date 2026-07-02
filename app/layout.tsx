@@ -38,6 +38,7 @@ const dancing = Dancing_Script({
 export const metadata: Metadata = {
   title: "Dainiki | Aesthetic Personal Journal",
   description: "A clean, private, and aesthetic space for your thoughts.",
+  manifest: "/manifest.json",
   icons: {
     icon: "/dainiki-logo.jpg",
   },

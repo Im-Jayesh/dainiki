@@ -5,7 +5,7 @@
 
 const DB_NAME = "dainiki_local_vault";
 const STORE_NAME = "encrypted_entries";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 function getIDB(): IDBFactory | null {
   if (typeof window === "undefined") return null;
@@ -26,6 +26,9 @@ export function openDB(): Promise<IDBDatabase> {
       const db = event.target.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains("pending_sync")) {
+        db.createObjectStore("pending_sync", { keyPath: "id" });
       }
     };
 
@@ -141,3 +144,95 @@ export async function clearLocalDb(): Promise<void> {
     console.error("[IndexedDB clearLocalDb Error]:", err);
   }
 }
+
+/**
+ * Retrieves all offline pending sync operations.
+ */
+export async function getPendingOperations(): Promise<any[]> {
+  try {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction("pending_sync", "readonly");
+      const store = transaction.objectStore("pending_sync");
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const ops = request.result || [];
+        // Sort by timestamp to ensure chronological playback
+        ops.sort((a: any, b: any) => a.timestamp - b.timestamp);
+        resolve(ops);
+      };
+
+      request.onerror = () => {
+        reject(request.error);
+      };
+    });
+  } catch (err) {
+    console.error("[IndexedDB getPendingOperations Error]:", err);
+    return [];
+  }
+}
+
+/**
+ * Adds an operation to the offline sync queue.
+ */
+export async function addPendingOperation(op: { 
+  action: "save" | "delete" | "archive"; 
+  entryId: number; 
+  data?: any; 
+}): Promise<number> {
+  try {
+    const db = await openDB();
+    const id = Date.now() + Math.random();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction("pending_sync", "readwrite");
+      const store = transaction.objectStore("pending_sync");
+      
+      const record = {
+        id,
+        action: op.action,
+        entryId: Number(op.entryId),
+        data: op.data ? { ...op.data } : undefined,
+        timestamp: Date.now()
+      };
+      
+      const request = store.put(record);
+
+      request.onsuccess = () => {
+        resolve(id);
+      };
+
+      request.onerror = () => {
+        reject(request.error);
+      };
+    });
+  } catch (err) {
+    console.error("[IndexedDB addPendingOperation Error]:", err);
+    return 0;
+  }
+}
+
+/**
+ * Deletes a processed operation from the offline sync queue.
+ */
+export async function deletePendingOperation(id: number): Promise<void> {
+  try {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction("pending_sync", "readwrite");
+      const store = transaction.objectStore("pending_sync");
+      const request = store.delete(id);
+
+      request.onsuccess = () => {
+        resolve();
+      };
+
+      request.onerror = () => {
+        reject(request.error);
+      };
+    });
+  } catch (err) {
+    console.error("[IndexedDB deletePendingOperation Error]:", err);
+  }
+}
+

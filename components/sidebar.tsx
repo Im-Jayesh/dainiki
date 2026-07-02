@@ -509,11 +509,11 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
           <div className="p-4 mt-auto border-t border-zinc-100 dark:border-zinc-900 bg-white/50 dark:bg-black/50">
             <div className="bg-zinc-100 dark:bg-zinc-900 rounded-xl p-3 border border-zinc-200 dark:border-zinc-800 flex items-center gap-3">
                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-amber-500 to-rose-500 flex items-center justify-center text-white font-bold text-xs shrink-0">
-                 {user.username[0].toUpperCase()}
+                 {user.username ? user.username[0].toUpperCase() : "?"}
                </div>
                <div className="flex-1 overflow-hidden text-left">
-                 <p className="text-[11px] font-bold truncate text-zinc-900 dark:text-zinc-100 leading-tight">{user.username}</p>
-                 <p className="text-[9px] font-bold uppercase tracking-wider text-amber-500 leading-tight">{user.credits} AI Credits</p>
+                 <p className="text-[11px] font-bold truncate text-zinc-900 dark:text-zinc-100 leading-tight">{user.username || "Reflector"}</p>
+                 <p className="text-[9px] font-bold uppercase tracking-wider text-amber-500 leading-tight">{user.credits ?? 0} AI Credits</p>
                </div>
             </div>
           </div>

@@ -7,7 +7,12 @@ export default async function RootLayout({
 }) {
   // Initialize DB tables if they don't exist
   // This is safe for Turso and local libSQL
-  await initDb();
+  try {
+    await initDb();
+  } catch (err) {
+    console.warn("[Database Init Warning] Could not initialize remote database tables. Operating in offline mode:", err);
+  }
 
   return children;
 }
+
