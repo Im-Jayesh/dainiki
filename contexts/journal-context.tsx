@@ -336,12 +336,15 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
     const isNew = !data.id;
     const targetId = isNew ? Math.floor(Date.now() + Math.random() * 1000) : Number(data.id);
 
+    const selectedMood = moods.find(m => m.id === data.mood_id);
     const record = {
       id: targetId,
       user_id: user.userId,
       title: data.title,
       content: data.content,
       mood_id: data.mood_id || null,
+      mood_name: selectedMood ? selectedMood.name : null,
+      mood_emoji: selectedMood ? selectedMood.emoji : null,
       tags: JSON.stringify(data.tags || []),
       image_paths: "[]",
       is_archived: 0,
