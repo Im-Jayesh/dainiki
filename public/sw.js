@@ -2,8 +2,7 @@ const CACHE_NAME = "dainiki-static-cache-v1";
 const OFFLINE_URLS = [
   "/",
   "/manifest.json",
-  "/dainiki-logo.jpg",
-  "/favicon.ico"
+  "/dainiki-logo.jpg"
 ];
 
 // Install Phase - Cache essential files
