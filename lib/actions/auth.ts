@@ -1,5 +1,16 @@
 "use server";
-import { createUser, userExists, emailExists, verifyPassword, verifyPin, getUserByUsername, verifyRecoveryKey, verifySecretAnswer, updatePassword, updatePin } from "@/lib/auth";
+import { createUser, userExists, emailExists, verifyPassword, verifyPin, getUserByUsername as getDbUserByUsername, verifyRecoveryKey, verifySecretAnswer, updatePassword, updatePin } from "@/lib/auth";
+import { getCache, setCache, deleteCache } from "@/lib/redis";
+
+export async function getUserByUsername(username: string) {
+  const cacheKey = `user:username:${username}`;
+  const cached = await getCache<any>(cacheKey);
+  if (cached) return cached;
+  
+  const user = await getDbUserByUsername(username);
+  if (user) await setCache(cacheKey, user, 3600);
+  return user;
+}
 
 export async function changePassword(oldPassword: string, newPassword: string) {
   const session = await getSession();
@@ -50,6 +61,7 @@ export async function updateVaultSecurity(data: {
     });
   }
 
+  await deleteCache(`user:username:${session.username}`);
   return { success: true };
 }
 import { cookies } from "next/headers";
@@ -347,6 +359,7 @@ export async function deductAiCredit() {
     args: [credits - 1, today, user.id]
   });
 
+  await deleteCache(`user:username:${session.username}`);
   return { success: true, remaining: credits - 1 };
 }
 
@@ -389,6 +402,7 @@ export async function updateSettings(settings: any) {
     args: [JSON.stringify(mergedSettings), session.userId]
   });
 
+  await deleteCache(`user:username:${session.username}`);
   return { success: true };
 }
 
@@ -405,6 +419,7 @@ export async function updatePersonalityProfile(profile: string) {
     args: [JSON.stringify(currentSettings), session.userId]
   });
 
+  await deleteCache(`user:username:${session.username}`);
   return { success: true };
 }
 

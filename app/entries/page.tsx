@@ -3,7 +3,9 @@
 import { useAuth } from "@/contexts/auth-context";
 import { useSettings } from "@/contexts/settings-context";
 import { useState, useEffect, useMemo } from "react";
-import { getAllEntries, fetchMoods } from "@/lib/actions/journal";
+import { fetchMoods } from "@/lib/actions/journal";
+import { useJournal } from "@/contexts/journal-context";
+
 import { Search, ChevronRight, Database, Smile, Calendar as CalendarIcon, X, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,13 +50,13 @@ export default function EntriesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
-  const [entries, setEntries] = useState<Entry[]>([]);
+  const { entries: allEntries, loading } = useJournal();
   const [moods, setMoods] = useState<Mood[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMoodId, setSelectedMoodId] = useState<number | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [visibleCount, setVisibleCount] = useState(12);
   
-  const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"active" | "archived" | "deleted">("active");
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -79,31 +81,28 @@ export default function EntriesPage() {
   }, []);
 
   useEffect(() => {
-    const loadEntries = async () => {
-      if (!user || !encryptionKey || !user.salt) return;
-      setLoading(true);
-      try {
-        const data = await getAllEntries({ view });
-        const decryptedEntries = await Promise.all(data.map(async (e) => {
-          try {
-            const dTitle = await decrypt(e.title, encryptionKey, user.salt);
-            const dContent = await decrypt(e.content, encryptionKey, user.salt);
-            return { ...e, title: dTitle, content: dContent } as Entry;
-          } catch {
-            return { ...e, title: "🔒 Decryption Failed", content: "" } as Entry;
-          }
-        }));
-        setEntries(decryptedEntries);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadEntries();
-  }, [user, encryptionKey, view]);
+    setVisibleCount(12);
+  }, [searchQuery, selectedMoodId, selectedDate, view]);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const isNearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 100;
+    if (isNearBottom && visibleCount < filteredEntries.length) {
+      setVisibleCount(prev => prev + 12);
+    }
+  };
+
 
   const filteredEntries = useMemo(() => {
+    let result = allEntries;
+    if (view === "deleted") {
+      result = result.filter(e => e.is_deleted);
+    } else if (view === "archived") {
+      result = result.filter(e => e.is_archived && !e.is_deleted);
+    } else {
+      result = result.filter(e => !e.is_deleted && !e.is_archived);
+    }
+
     const lowerQuery = searchQuery.toLowerCase();
 
     const parseUTCDate = (dateStr: string) => {
@@ -113,7 +112,7 @@ export default function EntriesPage() {
       return new Date(dateStr.replace(' ', 'T') + 'Z');
     };
 
-    return entries.filter(e => {
+    return result.filter(e => {
       // 1. Text Search Filter
       const entryDate = parseUTCDate(e.created_at);
       const dateFull = format(entryDate, 'yyyy-MM-dd');
@@ -135,7 +134,8 @@ export default function EntriesPage() {
 
       return true;
     });
-  }, [entries, searchQuery, selectedMoodId, selectedDate]);
+  }, [allEntries, view, searchQuery, selectedMoodId, selectedDate]);
+
 
   const clearFilters = () => {
     setSearchQuery("");
@@ -159,7 +159,8 @@ export default function EntriesPage() {
           </Button>
         )}
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 pt-20 lg:p-16 lg:pt-24">
+        <div onScroll={handleScroll} className="flex-1 overflow-y-auto custom-scrollbar p-6 pt-20 lg:p-16 lg:pt-24">
+
           <div className="max-w-6xl mx-auto space-y-8 lg:space-y-12">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
               <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
@@ -272,35 +273,49 @@ export default function EntriesPage() {
                 <p className="text-sm font-bold uppercase tracking-widest opacity-50 text-center px-4">No matching reflections found</p>
               </motion.div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
-                <AnimatePresence mode="popLayout">
-                  {filteredEntries.map((entry, index) => (
-                    <motion.div 
-                      layout
-                      key={entry.id}
-                      initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
-                      transition={{ delay: index * 0.05, type: "spring", bounce: 0.3 }}
-                      onClick={() => router.push(`/?id=${entry.id}&view=${view}`)}
-                      className="group cursor-pointer bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 p-6 lg:p-8 rounded-xl hover:shadow-xl transition-all duration-500 flex flex-col h-64 lg:h-72 relative overflow-hidden"
-                    >
+              <div className="space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
+                  <AnimatePresence mode="popLayout">
+                    {filteredEntries.slice(0, visibleCount).map((entry, index) => (
+                      <motion.div 
+                        layout
+                        key={entry.id}
+                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        transition={{ delay: (index % 12) * 0.05, type: "spring", bounce: 0.3 }}
+                        onClick={() => router.push(`/?id=${entry.id}&view=${view}`)}
+                        className="group cursor-pointer bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 p-6 lg:p-8 rounded-xl hover:shadow-xl transition-all duration-500 flex flex-col h-64 lg:h-72 relative overflow-hidden"
+                      >
 
-                      <div className="flex items-center justify-between mb-6">
-                        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">
-                          {format(new Date(entry.created_at), "MMM d, yyyy")}
-                        </span>
-                        {entry.mood_emoji && <div className="text-2xl">{entry.mood_emoji}</div>}
-                      </div>
-                      <h3 className="text-xl font-bold mb-4 line-clamp-1 group-hover:text-amber-500 transition-colors">
-                        {entry.title || "Untitled"}
-                      </h3>
-                      <div className="text-sm text-zinc-500 dark:text-zinc-400 line-clamp-4 flex-1 leading-relaxed" dangerouslySetInnerHTML={{ __html: entry.content || "..." }} />
+                        <div className="flex items-center justify-between mb-6">
+                          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">
+                            {format(new Date(entry.created_at), "MMM d, yyyy")}
+                          </span>
+                          {entry.mood_emoji && <div className="text-2xl">{entry.mood_emoji}</div>}
+                        </div>
+                        <h3 className="text-xl font-bold mb-4 line-clamp-1 group-hover:text-amber-500 transition-colors">
+                          {entry.title || "Untitled"}
+                        </h3>
+                        <div className="text-sm text-zinc-500 dark:text-zinc-400 line-clamp-4 flex-1 leading-relaxed" dangerouslySetInnerHTML={{ __html: entry.content || "..." }} />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
+                {visibleCount < filteredEntries.length && (
+                  <div className="flex justify-center py-6">
+                    <motion.div
+                      animate={{ opacity: [0.4, 1, 0.4] }}
+                      transition={{ repeat: Infinity, duration: 1.5 }}
+                      className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-400 dark:text-zinc-600"
+                    >
+                      Scrolling reveals more reflections...
                     </motion.div>
-                  ))}
-                </AnimatePresence>
+                  </div>
+                )}
               </div>
             )}
+
           </div>
         </div>
       </main>

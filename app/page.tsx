@@ -4,8 +4,10 @@ import { useAuth } from "@/contexts/auth-context";
 import { useSettings } from "@/contexts/settings-context";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Editor } from "@/components/editor";
-import { saveEntry, getAllEntries, deleteEntry, fetchMoods, saveMood, createHistoryItem, getAiHistory, updateAiHistoryStatus, clearAiHistory, getSingleEntry, restoreEntry, toggleArchive } from "@/lib/actions/journal";
+import { fetchMoods, saveMood, createHistoryItem, getAiHistory, updateAiHistoryStatus, clearAiHistory, getSingleEntry } from "@/lib/actions/journal";
+import { useJournal } from "@/contexts/journal-context";
 import { deductAiCredit } from "@/lib/actions/auth";
+
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Plus, Hash, Smile, Sparkles, AlertCircle, Zap, X, Trash2, Download, Archive, ArchiveRestore, ChevronRight, LayoutDashboard, Palette, Bot, ShieldCheck, Check } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -66,7 +68,8 @@ export default function JournalPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
-  const [entries, setEntries] = useState<Entry[]>([]);
+  const { entries, loading, saveJournalEntry, deleteJournalEntry, toggleJournalArchive, restoreJournalEntry } = useJournal();
+
   const [moods, setMoods] = useState<Mood[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [view, setView] = useState<"active" | "archived" | "deleted">("active");
@@ -162,85 +165,39 @@ export default function JournalPage() {
       console.error("Failed to create mood:", err);
     }
   };
+  const handleNewEntry = useCallback(() => {
+    setSelectedId(null);
+    setTitle("");
+    setContent("");
+    setMoodId(undefined);
+    setSelectedDate(new Date());
+    setEntryAiSummary(null);
+    setEntryAiReflection(null);
+    setEntryAiFormat(null);
+    setStreamingFeature(null);
+    setStreamingText("");
+  }, []);
 
-  const loadEntries = useCallback(async () => {
-    if (!user || !encryptionKey || !user.salt) return;
-    try {
-      const data = await getAllEntries({ view });
-      const decryptedEntries = await Promise.all(data.map(async (e) => {
-        try {
-          const dTitle = await decrypt(e.title, encryptionKey, user.salt);
-          const dContent = await decrypt(e.content, encryptionKey, user.salt);
-          
-          let dSummary: string | null = null;
-          let dReflection: string | null = null;
-          let dFormat: string | null = null;
-          
-          if (e.ai_summary) dSummary = await decrypt(e.ai_summary, encryptionKey, user.salt);
-          if (e.ai_reflection) dReflection = await decrypt(e.ai_reflection, encryptionKey, user.salt);
-          if (e.ai_format) dFormat = await decrypt(e.ai_format, encryptionKey, user.salt);
-          
-          return { 
-            ...e, 
-            title: dTitle, 
-            content: dContent,
-            ai_summary: dSummary,
-            ai_reflection: dReflection,
-            ai_format: dFormat
-          } as Entry;
-        } catch (err) {
-          return { ...e, title: "🔒 Decryption Failed", content: "" } as Entry;
-        }
-      }));
+  useEffect(() => {
+    if (loading || entries.length === 0) return;
 
-      setEntries(decryptedEntries);
-      const urlId = searchParams.get("id");
-      if (urlId) {
-        const idNum = Number(urlId);
-        const found = decryptedEntries.find(e => e.id === idNum);
-        if (found) {
-          handleSelect(found, found.id === selectedId);
-        } else {
-          const e = await getSingleEntry(idNum);
-          if (e) {
-            try {
-              const dTitle = await decrypt(e.title, encryptionKey, user.salt);
-              const dContent = await decrypt(e.content, encryptionKey, user.salt);
-              
-              let dSummary: string | null = null;
-              let dReflection: string | null = null;
-              let dFormat: string | null = null;
-              
-              if (e.ai_summary) dSummary = await decrypt(e.ai_summary, encryptionKey, user.salt);
-              if (e.ai_reflection) dReflection = await decrypt(e.ai_reflection, encryptionKey, user.salt);
-              if (e.ai_format) dFormat = await decrypt(e.ai_format, encryptionKey, user.salt);
-              
-              handleSelect({ 
-                ...e, 
-                title: dTitle, 
-                content: dContent,
-                ai_summary: dSummary,
-                ai_reflection: dReflection,
-                ai_format: dFormat
-              } as Entry, e.id === selectedId);
-            } catch (err) {
-              handleSelect({ ...e, title: "🔒 Decryption Failed", content: "" }, e.id === selectedId);
-            }
-          }
-        }
-      } else if (decryptedEntries.length > 0 && !selectedId) {
-        const today = new Date().toDateString();
-        const lastEntryDate = new Date(decryptedEntries[0].created_at).toDateString();
-        if (today !== lastEntryDate) {
-          handleNewEntry();
-        } else {
-          handleSelect(decryptedEntries[0], decryptedEntries[0].id === selectedId);
-        }
+    const urlId = searchParams.get("id");
+    if (urlId) {
+      const idNum = Number(urlId);
+      const found = entries.find(e => e.id === idNum);
+      if (found) {
+        handleSelect(found, found.id === selectedId);
       }
-    } catch (error) {
-      console.error("Failed to load entries:", error);
+    } else if (!selectedId && entries.length > 0) {
+      const today = new Date().toDateString();
+      const lastEntryDate = new Date(entries[0].created_at).toDateString();
+      if (today !== lastEntryDate) {
+        handleNewEntry();
+      } else {
+        handleSelect(entries[0], entries[0].id === selectedId);
+      }
     }
-  }, [user, encryptionKey, view, selectedId, searchParams, handleSelect]);
+  }, [entries, loading, searchParams, selectedId, handleSelect, handleNewEntry]);
 
   useEffect(() => {
     const v = searchParams.get("view");
@@ -252,11 +209,10 @@ export default function JournalPage() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (user && encryptionKey && user.salt) loadEntries();
     fetchMoods().then((m) => setMoods(m as unknown as Mood[]));
-    
     if (searchParams.get("action") === "quick-entry") setIsQuickEntryOpen(true);
-  }, [user, encryptionKey, view, loadEntries, searchParams]);
+  }, [searchParams]);
+
 
   const handleAutoSave = useCallback(async () => {
     if (!user || !encryptionKey || view !== "active" || !user.salt) return;
@@ -283,32 +239,21 @@ export default function JournalPage() {
       const encryptedTitle = await encrypt(currentTitle, encryptionKey, user.salt);
       const encryptedContent = await encrypt(safeContent, encryptionKey, user.salt);
 
-      const res = await saveEntry({ id: selectedId || undefined, title: encryptedTitle, content: encryptedContent, mood_id: moodId });
+      const res = await saveJournalEntry({ id: selectedId || undefined, title: encryptedTitle, content: encryptedContent, mood_id: moodId });
       if (!selectedId && res) setSelectedId(res);
       
       lastSavedRef.current = { title: safeTitle, content: safeContent, moodId };
-      
-      const data = await getAllEntries({ view });
-      const decryptedEntries = await Promise.all(data.map(async (e) => {
-        try {
-          const dTitle = await decrypt(e.title, encryptionKey, user.salt);
-          const dContent = await decrypt(e.content, encryptionKey, user.salt);
-          return { ...e, title: dTitle, content: dContent } as Entry;
-        } catch {
-          return { ...e, title: "🔒 Decryption Failed", content: "" } as Entry;
-        }
-      }));
-      setEntries(decryptedEntries);
     } catch (err) {
       console.error("Auto-save failed", err);
     } finally {
       setIsSaving(false);
     }
-  }, [user, encryptionKey, view, content, title, moodId, selectedId, entries]);
+  }, [user, encryptionKey, view, content, title, moodId, selectedId, saveJournalEntry]);
+
 
   // Debounced Auto-Save
   useEffect(() => {
-    const timer = setTimeout(() => handleAutoSave(), 2000);
+    const timer = setTimeout(() => handleAutoSave(), 5000);
     return () => clearTimeout(timer);
   }, [content, title, moodId, handleAutoSave]);
 
@@ -321,41 +266,27 @@ export default function JournalPage() {
     }
   }, [streamingText, entryAiHistory, aiHistoryTab]);
 
-  const handleNewEntry = () => {
-    setSelectedId(null);
-    setTitle("");
-    setContent("");
-    setMoodId(undefined);
-    setSelectedDate(new Date());
-    setEntryAiSummary(null);
-    setEntryAiReflection(null);
-    setEntryAiFormat(null);
-    setStreamingFeature(null);
-    setStreamingText("");
-  };
+
 
   const handleDelete = async (id: number) => {
-    await deleteEntry(id);
+    await deleteJournalEntry(id);
     if (selectedId === id) handleNewEntry();
-    loadEntries();
   };
 
   const handleHardDelete = async (id: number) => {
-    await deleteEntry(id, true);
+    await deleteJournalEntry(id, true);
     if (selectedId === id) handleNewEntry();
-    loadEntries();
   };
 
   const handleRestore = async (id: number) => {
-    await restoreEntry(id);
-    loadEntries();
+    await restoreJournalEntry(id);
   };
 
   const handleToggleArchive = async (id: number, currentStatus?: boolean) => {
-    await toggleArchive(id, !currentStatus);
+    await toggleJournalArchive(id, !currentStatus);
     if (selectedId === id) handleNewEntry();
-    loadEntries();
   };
+
 
   const handleExport = (format: "md") => {
     if (!content) return;
@@ -399,11 +330,12 @@ export default function JournalPage() {
         const eTitle = await encrypt(currentTitle, encryptionKey!, user!.salt);
         const eContent = await encrypt(content, encryptionKey!, user!.salt);
         
-        const newId = await saveEntry({
+        const newId = await saveJournalEntry({
           title: eTitle,
           content: eContent,
           mood_id: moodId,
         });
+
         if (newId) {
           currentEntryId = newId;
           setSelectedId(newId);
@@ -474,8 +406,8 @@ export default function JournalPage() {
         updateData.ai_format = encryptedValue;
         setEntryAiFormat(fullResponse);
       }
-      await saveEntry(updateData);
-      loadEntries();
+      await saveJournalEntry(updateData);
+
       
     } catch (err: any) {
       setAiError(err.message || "AI failed to respond");
@@ -496,10 +428,10 @@ export default function JournalPage() {
     if (!quickEntryContent.trim() || !user || !encryptionKey || !user.salt) return;
     const encryptedTitle = await encrypt("Quick Entry " + format(new Date(), "HH:mm"), encryptionKey, user.salt);
     const encryptedContent = await encrypt(`<p>${quickEntryContent}</p>`, encryptionKey, user.salt);
-    await saveEntry({ title: encryptedTitle, content: encryptedContent });
+    await saveJournalEntry({ title: encryptedTitle, content: encryptedContent });
     setQuickEntryContent("");
     setIsQuickEntryOpen(false);
-    loadEntries();
+
   };
 
   const handleApplyHistoryItem = async (id: string) => {
@@ -510,13 +442,6 @@ export default function JournalPage() {
     setContent(formattedSuggestion);
     setEntryAiFormat(item.content);
     
-    // Mark as applied in state
-    setEntryAiHistory(prev => prev.map(h => h.id === id ? { ...h, status: "applied" } : h));
-    
-    if (selectedId) {
-      setEntries(prev => prev.map(e => e.id === selectedId ? { ...e, content: formattedSuggestion } : e));
-    }
-    
     await updateAiHistoryStatus(Number(id), "applied");
     
     const currentTitle = title || "Untitled " + format(selectedDate || new Date(), "MMM d, yyyy");
@@ -524,15 +449,15 @@ export default function JournalPage() {
     const eContent = await encrypt(formattedSuggestion, encryptionKey!, user!.salt);
     const eFormat = await encrypt(item.content, encryptionKey!, user!.salt);
     
-    await saveEntry({
+    await saveJournalEntry({
       id: selectedId || undefined,
       title: eTitle,
       content: eContent,
       mood_id: moodId || undefined,
       ai_format: eFormat
     });
-    
-    loadEntries();
+
+
   };
 
   const handleDiscardHistoryItem = async (id: string) => {

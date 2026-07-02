@@ -12,6 +12,7 @@
     "@base-ui/react": "^1.5.0",
     "@google/generative-ai": "^0.24.1",
     "@libsql/client": "^0.17.3",
+    "@libsql/darwin-arm64": "^0.5.29",
     "@tailwindcss/typography": "^0.5.19",
     "@tiptap/extension-bubble-menu": "3.23.6",
     "@tiptap/extension-character-count": "3.23.6",
@@ -40,6 +41,7 @@
     "framer-motion": "^12.40.0",
     "fuse.js": "^7.3.0",
     "html2pdf.js": "^0.14.0",
+    "ioredis": "^5.11.1",
     "lucide-react": "^1.16.0",
     "next": "16.2.6",
     "next-pwa": "^5.6.0",
@@ -60,6 +62,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/canvas-confetti": "^1.9.0",
+    "@types/minimatch": "^5.1.2",
     "@types/node": "^20",
     "@types/node-cron": "^3.0.11",
     "@types/nodemailer": "^8.0.0",

@@ -43,9 +43,10 @@ import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { SecuritySettings } from "./auth/security-settings";
 import { useState, useEffect } from "react";
-import { getAllEntries, exportAllEntries } from "@/lib/actions/journal";
+import { exportAllEntries } from "@/lib/actions/journal";
 import { updateSettings } from "@/lib/actions/auth";
 import { isSameDay, subDays } from "date-fns";
+import { useJournal } from "@/contexts/journal-context";
 
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -69,6 +70,7 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
   const { appearance, setAppearance, reminders, setReminders } = useSettings();
   const pathname = usePathname();
   const router = useRouter();
+  const { entries } = useJournal();
 
   const [streak, setStreak] = useState(0);
   const [lastEntryDate, setLastEntryDate] = useState<string | undefined>(undefined);
@@ -93,45 +95,40 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
   }, [user]);
 
   useEffect(() => {
-    const calculateStreak = async () => {
-      if (!user) return;
-      const entries = await getAllEntries();
-      if (entries.length === 0) {
-        setStreak(0);
-        return;
+    if (!user || entries.length === 0) {
+      setStreak(0);
+      setLastEntryDate(undefined);
+      return;
+    }
+
+    setLastEntryDate(entries[0].created_at);
+
+    let currentStreak = 0;
+    let checkDate = new Date();
+    
+    // Check if there's an entry today or yesterday to continue streak
+    const hasToday = entries.some(e => isSameDay(new Date(e.created_at), checkDate));
+    const hasYesterday = entries.some(e => isSameDay(new Date(e.created_at), subDays(checkDate, 1)));
+
+    if (!hasToday && !hasYesterday) {
+      setStreak(0);
+      return;
+    }
+
+    // Start from the most recent day that has an entry
+    if (!hasToday) checkDate = subDays(checkDate, 1);
+
+    while (true) {
+      const hasEntry = entries.some(e => isSameDay(new Date(e.created_at), checkDate));
+      if (hasEntry) {
+        currentStreak++;
+        checkDate = subDays(checkDate, 1);
+      } else {
+        break;
       }
-
-      setLastEntryDate(entries[0].created_at);
-
-      let currentStreak = 0;
-      let checkDate = new Date();
-      
-      // Check if there's an entry today or yesterday to continue streak
-      const hasToday = entries.some(e => isSameDay(new Date(e.created_at), checkDate));
-      const hasYesterday = entries.some(e => isSameDay(new Date(e.created_at), subDays(checkDate, 1)));
-
-      if (!hasToday && !hasYesterday) {
-        setStreak(0);
-        return;
-      }
-
-      // Start from the most recent day that has an entry
-      if (!hasToday) checkDate = subDays(checkDate, 1);
-
-      while (true) {
-        const hasEntry = entries.some(e => isSameDay(new Date(e.created_at), checkDate));
-        if (hasEntry) {
-          currentStreak++;
-          checkDate = subDays(checkDate, 1);
-        } else {
-          break;
-        }
-      }
-      setStreak(currentStreak);
-    };
-
-    calculateStreak();
-  }, [user]);
+    }
+    setStreak(currentStreak);
+  }, [entries, user]);
 
   return (
     <>

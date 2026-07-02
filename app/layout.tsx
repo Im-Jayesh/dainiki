@@ -7,6 +7,8 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "sonner";
 import { SettingsProvider } from "@/contexts/settings-context";
 import Init from "./init";
+import { JournalProvider } from "@/contexts/journal-context";
+
 
 const geistSans = Geist({
   variable: "--font-sans",
@@ -65,8 +67,13 @@ export default function RootLayout({
           <SettingsProvider>
             <Init>
               <AuthProvider>
-                <SecurityGate>{children}</SecurityGate>
+                <SecurityGate>
+                  <JournalProvider>
+                    {children}
+                  </JournalProvider>
+                </SecurityGate>
               </AuthProvider>
+
             </Init>
             <Toaster position="top-center" />
           </SettingsProvider>
