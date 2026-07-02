@@ -17,7 +17,9 @@ import {
   saveEntry, 
   deleteEntry as serverDeleteEntry, 
   toggleArchive as serverToggleArchive,
-  restoreEntry as serverRestoreEntry
+  restoreEntry as serverRestoreEntry,
+  fetchMoods,
+  saveMood
 } from "@/lib/actions/journal";
 import { decrypt } from "@/lib/crypto";
 
@@ -94,7 +96,6 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
 
     const loadMoods = async () => {
       try {
-        const { fetchMoods } = await import("@/lib/actions/journal");
         const data = await fetchMoods();
         if (data && data.length > 0) {
           setMoods(data);
@@ -499,7 +500,6 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const saveCustomMood = useCallback(async (name: string, emoji: string) => {
-    const { saveMood, fetchMoods } = await import("@/lib/actions/journal");
     await saveMood(name, emoji);
     try {
       const data = await fetchMoods();

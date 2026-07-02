@@ -46,7 +46,7 @@ export default function CalendarPage() {
   const streak = useMemo(() => {
     if (entries.length === 0) return 0;
     const sortedDates = entries
-      .map(e => new Date(new Date(e.created_at).setHours(0,0,0,0)))
+      .map(e => e.created_at ? new Date(new Date(e.created_at.replace(" ", "T")).setHours(0,0,0,0)) : new Date(0))
       .sort((a, b) => b.getTime() - a.getTime());
     
     let currentStreak = 0;
@@ -123,7 +123,7 @@ export default function CalendarPage() {
 
                 components={{
                   DayButton: (props) => {
-                    const entry = entries.find(e => isSameDay(new Date(e.created_at), props.day.date));
+                    const entry = entries.find(e => e.created_at ? isSameDay(new Date(e.created_at.replace(" ", "T")), props.day.date) : false);
                     return (
                       <div className="relative flex items-center justify-center h-full w-full group/day" title={entry?.mood_name || undefined}>
                         <CalendarDayButton {...props} />

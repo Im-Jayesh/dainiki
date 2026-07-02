@@ -107,15 +107,15 @@ export default function GardenPage() {
     
     let currentStreak = 0;
     let checkDate = new Date();
-    const hasToday = allEntries.some(e => isSameDay(new Date(e.created_at!), checkDate));
-    const hasYesterday = allEntries.some(e => isSameDay(new Date(e.created_at!), subDays(checkDate, 1)));
+    const hasToday = allEntries.some(e => e.created_at ? isSameDay(new Date(e.created_at.replace(" ", "T")), checkDate) : false);
+    const hasYesterday = allEntries.some(e => e.created_at ? isSameDay(new Date(e.created_at.replace(" ", "T")), subDays(checkDate, 1)) : false);
 
     if (!hasToday && !hasYesterday) {
       return 0;
     } else {
       if (!hasToday) checkDate = subDays(checkDate, 1);
       while (true) {
-        const hasEntry = allEntries.some(e => isSameDay(new Date(e.created_at!), checkDate));
+        const hasEntry = allEntries.some(e => e.created_at ? isSameDay(new Date(e.created_at.replace(" ", "T")), checkDate) : false);
         if (hasEntry) {
           currentStreak++;
           checkDate = subDays(checkDate, 1);
