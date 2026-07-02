@@ -1,7 +1,6 @@
 const CACHE_NAME = "dainiki-static-cache-v1";
 const OFFLINE_URLS = [
   "/",
-  "/entries",
   "/manifest.json",
   "/dainiki-logo.jpg",
   "/favicon.ico"
@@ -58,10 +57,16 @@ self.addEventListener("fetch", (event) => {
         })
         .catch(() => {
           // Offline fallback - search caches for a matching page or return home
-          return caches.match(request).then((cachedResponse) => {
+          // Strip query parameters to match cached page (e.g. /?id=12 -> /)
+          const urlNoParams = request.url.split('?')[0];
+          return caches.match(urlNoParams).then((cachedResponse) => {
             if (cachedResponse) return cachedResponse;
-            // Fall back to main dashboard if page not cached
-            return caches.match("/");
+            
+            return caches.match(request).then((res) => {
+              if (res) return res;
+              // Fall back to main dashboard shell
+              return caches.match("/");
+            });
           });
         })
     );
