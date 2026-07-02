@@ -89,55 +89,60 @@ export async function register(data: {
   master_key_password?: string;
   master_key_pin?: string;
 }) {
-  if (await userExists(data.username)) {
-    throw new Error("Username already taken");
-  }
-
-  if (await emailExists(data.email)) {
-    throw new Error("Email already registered with another vault");
-  }
-
-  const { id, recoveryKey, otpCode } = await createUser(data);
-
-  // Send Email via Nodemailer SMTP
-  const emailUser = process.env.EMAIL_USER; // Your Gmail
-  const emailPass = process.env.EMAIL_PASS; // Your App Password
-
-  if (emailUser && emailPass) {
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: emailUser,
-        pass: emailPass,
-      },
-    });
-
-    try {
-      await transporter.sendMail({
-        from: `"Dainiki" <${emailUser}>`,
-        to: data.email,
-        subject: "Verify your Dainiki account",
-        html: `
-          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 40px; color: #18181b; border: 1px solid #e4e4e7; border-radius: 24px;">
-            <h1 style="font-size: 24px; font-weight: bold; margin-bottom: 24px;">Welcome to Dainiki</h1>
-            <p style="font-size: 16px; margin-bottom: 24px;">Your verification code is:</p>
-            <div style="background-color: #f4f4f5; padding: 24px; border-radius: 12px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 0.5em; color: #09090b;">
-              ${otpCode}
-            </div>
-            <p style="font-size: 12px; color: #71717a; margin-top: 32px;">If you didn't create an account, you can ignore this email.</p>
-          </div>
-        `
-      });
-      console.log(`[AUTH] Email sent successfully to ${data.email}`);
-    } catch (e) {
-      console.error("Nodemailer email error:", e);
+  try {
+    if (await userExists(data.username)) {
+      return { error: "Username already taken" };
     }
+
+    if (await emailExists(data.email)) {
+      return { error: "Email already registered with another vault" };
+    }
+
+    const { id, recoveryKey, otpCode } = await createUser(data);
+
+    // Send Email via Nodemailer SMTP
+    const emailUser = process.env.EMAIL_USER; // Your Gmail
+    const emailPass = process.env.EMAIL_PASS; // Your App Password
+
+    if (emailUser && emailPass) {
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: emailUser,
+          pass: emailPass,
+        },
+      });
+
+      try {
+        await transporter.sendMail({
+          from: `"Dainiki" <${emailUser}>`,
+          to: data.email,
+          subject: "Verify your Dainiki account",
+          html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 40px; color: #18181b; border: 1px solid #e4e4e7; border-radius: 24px;">
+              <h1 style="font-size: 24px; font-weight: bold; margin-bottom: 24px;">Welcome to Dainiki</h1>
+              <p style="font-size: 16px; margin-bottom: 24px;">Your verification code is:</p>
+              <div style="background-color: #f4f4f5; padding: 24px; border-radius: 12px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 0.5em; color: #09090b;">
+                ${otpCode}
+              </div>
+              <p style="font-size: 12px; color: #71717a; margin-top: 32px;">If you didn't create an account, you can ignore this email.</p>
+            </div>
+          `
+        });
+        console.log(`[AUTH] Email sent successfully to ${data.email}`);
+      } catch (e) {
+        console.error("Nodemailer email error:", e);
+      }
+    }
+
+    // LOGGING OTP for development
+    console.log(`[AUTH] Verification OTP for ${data.username}: ${otpCode}`);
+
+    return { recoveryKey, otpCode };
+  } catch (err: any) {
+    console.error("[CRITICAL REGISTER ERROR]:", err);
+    return { error: err.message || "Failed to register", stack: err.stack };
   }
-
-  // LOGGING OTP for development
-  console.log(`[AUTH] Verification OTP for ${data.username}: ${otpCode}`);
-
-  return { recoveryKey, otpCode };
 }
 
 
