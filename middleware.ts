@@ -43,7 +43,10 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
+     * - sw.js (Service Worker - must be served without redirect)
+     * - manifest.json (PWA manifest - must be served without redirect)
+     * - *.png, *.jpg, *.svg, *.ico (public static assets)
      */
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|sw.js|manifest.json|.*\\.png|.*\\.jpg|.*\\.svg|.*\\.ico).*)',
   ],
 };
