@@ -38,7 +38,7 @@ async function generateCockyReminderWithAi(username: string, streak: number) {
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash-lite",
+      model: "gemini-2.5-flash",
       systemInstruction: "You are the passive-aggressive, hilariously cocky, and guilt-inducing AI reminder assistant for Dainiki, a secure journal app. Your style is heavily inspired by Duolingo's aggressive reminders (like the owl showing up at your door or crying). You want the user to write their daily entry. You must make fun of their streak, tease them, or use extreme passive-aggressive guilt, but keep it funny and engaging."
     });
 
