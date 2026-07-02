@@ -1,4 +1,9 @@
 "use server";
+import { cookies } from "next/headers";
+import { db } from "@/lib/db";
+import nodemailer from "nodemailer";
+import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { createUser, userExists, emailExists, verifyPassword, verifyPin, getUserByUsername as getDbUserByUsername, verifyRecoveryKey, verifySecretAnswer, updatePassword, updatePin } from "@/lib/auth";
 import { getCache, setCache, deleteCache } from "@/lib/redis";
 
@@ -64,11 +69,6 @@ export async function updateVaultSecurity(data: {
   await deleteCache(`user:username:${session.username}`);
   return { success: true };
 }
-import { cookies } from "next/headers";
-import { db } from "@/lib/db";
-import nodemailer from "nodemailer";
-import bcrypt from "bcryptjs";
-import crypto from "crypto";
 
 const SESSION_COOKIE = "dainiki_session";
 

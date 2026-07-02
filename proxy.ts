@@ -1,6 +1,6 @@
 import { NextResponse, NextRequest } from 'next/server';
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const sessionCookie = request.cookies.get('dainiki_session');
   const { pathname } = request.nextUrl;
 
@@ -19,9 +19,6 @@ export function middleware(request: NextRequest) {
     
     // If logged in but NOT verified, and trying to access private paths
     if (!session.isVerified && !isPublicPath && pathname !== '/') {
-       // We allow them to stay on the root where they can see the OTP verification if they just registered
-       // but for other pages, we redirect to root.
-       // Actually, the app logic shows the OTP form on root if unverified.
        return NextResponse.redirect(new URL('/', request.url));
     }
   } catch (e) {
@@ -34,7 +31,6 @@ export function middleware(request: NextRequest) {
   return NextResponse.next();
 }
 
-// See "Matching Paths" below to learn more
 export const config = {
   matcher: [
     /*
@@ -43,10 +39,10 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * - sw.js (Service Worker - must be served without redirect)
-     * - manifest.json (PWA manifest - must be served without redirect)
+     * - sw.js (Service Worker - must NOT be behind a redirect)
+     * - manifest.json (PWA manifest - must NOT be behind a redirect)
      * - *.png, *.jpg, *.svg, *.ico (public static assets)
      */
-    '/((?!api|_next/static|_next/image|favicon.ico|sw.js|manifest.json|.*\\.png|.*\\.jpg|.*\\.svg|.*\\.ico).*)',
+    '/((?!api|_next/static|_next/image|favicon\\.ico|sw\\.js|manifest\\.json|.*\\.png|.*\\.jpg|.*\\.svg|.*\\.ico).*)',
   ],
 };
