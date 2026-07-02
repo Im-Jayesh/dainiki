@@ -161,6 +161,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshStatus();
   }, [refreshStatus]);
 
+  // Register PWA Service Worker at root scope
+  useEffect(() => {
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js")
+        .then((reg) => console.log("[PWA] Service Worker registered at root scope:", reg.scope))
+        .catch((err) => console.error("[PWA] Service Worker registration failed at root:", err));
+    }
+  }, []);
+
   const logout = async () => {
     await serverLogout();
     setIsAuth(false);
