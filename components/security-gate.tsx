@@ -25,16 +25,25 @@ export function SecurityGate({ children }: { children: React.ReactNode }) {
   const [unlockError, setUnlockError] = useState("");
 
   useEffect(() => {
+    let isReloading = false;
+
+    const handleBeforeUnload = () => {
+      isReloading = true;
+    };
+
     const handleVisibilityChange = () => {
+      if (isReloading) return;
       if (document.visibilityState === "hidden" && isAuth && isVerified) {
         lock();
       }
     };
 
+    window.addEventListener("beforeunload", handleBeforeUnload);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("blur", handleVisibilityChange); // Also lock on window blur (e.g. alt-tab)
 
     return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("blur", handleVisibilityChange);
     };

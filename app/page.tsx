@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useSettings } from "@/contexts/settings-context";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Editor } from "@/components/editor";
-import { fetchMoods, saveMood, createHistoryItem, getAiHistory, updateAiHistoryStatus, clearAiHistory, getSingleEntry } from "@/lib/actions/journal";
+import { createHistoryItem, getAiHistory, updateAiHistoryStatus, clearAiHistory, getSingleEntry } from "@/lib/actions/journal";
 import { useJournal } from "@/contexts/journal-context";
 import { deductAiCredit } from "@/lib/actions/auth";
 
@@ -68,9 +68,8 @@ export default function JournalPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
-  const { entries, loading, saveJournalEntry, deleteJournalEntry, toggleJournalArchive, restoreJournalEntry } = useJournal();
+  const { entries, moods, loading, saveJournalEntry, deleteJournalEntry, toggleJournalArchive, restoreJournalEntry, saveCustomMood } = useJournal();
 
-  const [moods, setMoods] = useState<Mood[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [view, setView] = useState<"active" | "archived" | "deleted">("active");
   const [content, setContent] = useState("");
@@ -155,9 +154,7 @@ export default function JournalPage() {
   const handleCreateMood = async () => {
     if (!newMoodName.trim() || !newMoodEmoji.trim()) return;
     try {
-      await saveMood(newMoodName.trim(), newMoodEmoji.trim());
-      const m = await fetchMoods();
-      setMoods(m as unknown as Mood[]);
+      await saveCustomMood(newMoodName.trim(), newMoodEmoji.trim());
       setIsAddingMood(false);
       setNewMoodName("");
       setNewMoodEmoji("😊");
@@ -209,7 +206,6 @@ export default function JournalPage() {
   }, [searchParams]);
 
   useEffect(() => {
-    fetchMoods().then((m) => setMoods(m as unknown as Mood[]));
     if (searchParams.get("action") === "quick-entry") setIsQuickEntryOpen(true);
   }, [searchParams]);
 

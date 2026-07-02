@@ -3,7 +3,7 @@
 import { useAuth } from "@/contexts/auth-context";
 import { useSettings } from "@/contexts/settings-context";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { getAllEntries, fetchMoods } from "@/lib/actions/journal";
+import { useJournal } from "@/contexts/journal-context";
 import { getEcho, castEcho, reactToEcho, getMyEchoes } from "@/lib/actions/echoes";
 import { Sidebar } from "@/components/sidebar";
 import { cn } from "@/lib/utils";
@@ -40,7 +40,7 @@ import {
 } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { isSameDay, subDays, format } from "date-fns";
-import { decrypt } from "@/lib/crypto";
+
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 
@@ -74,8 +74,6 @@ export default function GardenPage() {
   const { appearance } = useSettings();
   const { resolvedTheme } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [streak, setStreak] = useState(0);
-  const [totalEntries, setTotalEntries] = useState(0);
   const [ripples, setRipples] = useState<Ripple[]>([]);
   
   // Music & UI state
@@ -92,12 +90,42 @@ export default function GardenPage() {
   ]);
 
   // Wishing Coin State
+  const { entries: allRawEntries, moods } = useJournal();
   const [coins, setCoins] = useState(2);
   const [isCoinTossing, setIsCoinTossing] = useState(false);
   const [memoryToShow, setMemoryToShow] = useState<any>(null);
-  const [moods, setMoods] = useState<any[]>([]);
   const [isFallback, setIsFallback] = useState(false);
-  const [allEntries, setAllEntries] = useState<any[]>([]);
+
+  const allEntries = useMemo(() => {
+    return allRawEntries.filter(e => !e.is_deleted && !e.is_archived);
+  }, [allRawEntries]);
+
+  const totalEntries = allEntries.length;
+
+  const streak = useMemo(() => {
+    if (allEntries.length === 0) return 0;
+    
+    let currentStreak = 0;
+    let checkDate = new Date();
+    const hasToday = allEntries.some(e => isSameDay(new Date(e.created_at!), checkDate));
+    const hasYesterday = allEntries.some(e => isSameDay(new Date(e.created_at!), subDays(checkDate, 1)));
+
+    if (!hasToday && !hasYesterday) {
+      return 0;
+    } else {
+      if (!hasToday) checkDate = subDays(checkDate, 1);
+      while (true) {
+        const hasEntry = allEntries.some(e => isSameDay(new Date(e.created_at!), checkDate));
+        if (hasEntry) {
+          currentStreak++;
+          checkDate = subDays(checkDate, 1);
+        } else {
+          break;
+        }
+      }
+      return currentStreak;
+    }
+  }, [allEntries]);
 
   // Echoes State
   const [floatingEcho, setFloatingEcho] = useState<any>(null);
@@ -124,70 +152,7 @@ export default function GardenPage() {
     }
   }, []);
 
-  useEffect(() => {
-    const loadData = async () => {
-      if (!user || !encryptionKey || !user.salt) return;
-      try {
-        const [m, e] = await Promise.all([fetchMoods(), getAllEntries()]);
-        setMoods(m);
-        
-        // Decrypt entries for the wishing coin
-        const decryptedEntries = await Promise.all(e.map(async (entry) => {
-          try {
-            const dTitle = await decrypt(entry.title, encryptionKey, user.salt!);
-            const dContent = await decrypt(entry.content, encryptionKey, user.salt!);
-            return { ...entry, title: dTitle, content: dContent };
-          } catch {
-            return { ...entry, title: "🔒 Decryption Failed", content: "" };
-          }
-        }));
-        
-        setAllEntries(decryptedEntries);
-      } catch (err) {
-        console.error("Failed to load garden data", err);
-      }
-    };
-    loadData();
-  }, [user, encryptionKey]);
 
-  useEffect(() => {
-    const loadStats = async () => {
-      if (!user) return;
-      try {
-        const entries = await getAllEntries();
-        setTotalEntries(entries.length);
-        
-        if (entries.length === 0) {
-          setStreak(0);
-          return;
-        }
-
-        let currentStreak = 0;
-        let checkDate = new Date();
-        const hasToday = entries.some(e => isSameDay(new Date(e.created_at!), checkDate));
-        const hasYesterday = entries.some(e => isSameDay(new Date(e.created_at!), subDays(checkDate, 1)));
-
-        if (!hasToday && !hasYesterday) {
-          setStreak(0);
-        } else {
-          if (!hasToday) checkDate = subDays(checkDate, 1);
-          while (true) {
-            const hasEntry = entries.some(e => isSameDay(new Date(e.created_at!), checkDate));
-            if (hasEntry) {
-              currentStreak++;
-              checkDate = subDays(checkDate, 1);
-            } else {
-              break;
-            }
-          }
-          setStreak(currentStreak);
-        }
-      } catch (e) {
-        console.error(e);
-      }
-    };
-    loadStats();
-  }, [user]);
 
   // Load a random echo
   useEffect(() => {

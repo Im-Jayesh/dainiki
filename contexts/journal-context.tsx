@@ -43,6 +43,7 @@ export interface JournalEntry {
 
 interface JournalContextType {
   entries: JournalEntry[];
+  moods: { id: number; name: string; emoji: string }[];
   loading: boolean;
   syncing: boolean;
   sync: () => Promise<void>;
@@ -60,6 +61,7 @@ interface JournalContextType {
   deleteJournalEntry: (id: number, permanent?: boolean) => Promise<void>;
   toggleJournalArchive: (id: number, archived: boolean) => Promise<void>;
   restoreJournalEntry: (id: number) => Promise<void>;
+  saveCustomMood: (name: string, emoji: string) => Promise<void>;
 }
 
 
@@ -68,8 +70,53 @@ const JournalContext = createContext<JournalContextType | undefined>(undefined);
 export function JournalProvider({ children }: { children: React.ReactNode }) {
   const { user, encryptionKey } = useAuth();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
+  const [moods, setMoods] = useState<{ id: number; name: string; emoji: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+
+  // Load and cache moods for offline fallback
+  useEffect(() => {
+    const DEFAULT_MOODS = [
+      { id: 1, name: "Excited", emoji: "🤩" },
+      { id: 2, name: "Happy", emoji: "😊" },
+      { id: 3, name: "Calm", emoji: "😌" },
+      { id: 4, name: "Neutral", emoji: "😐" },
+      { id: 5, name: "Sad", emoji: "😢" },
+      { id: 6, name: "Angry", emoji: "😠" },
+      { id: 7, name: "Tired", emoji: "😴" },
+      { id: 8, name: "Anxious", emoji: "😰" }
+    ];
+
+    if (!user) {
+      setMoods(DEFAULT_MOODS);
+      return;
+    }
+
+    const loadMoods = async () => {
+      try {
+        const { fetchMoods } = await import("@/lib/actions/journal");
+        const data = await fetchMoods();
+        if (data && data.length > 0) {
+          setMoods(data);
+          localStorage.setItem("dainiki_cached_moods", JSON.stringify(data));
+          return;
+        }
+      } catch (e) {
+        console.warn("Failed to fetch moods from server. Using local cache:", e);
+      }
+
+      const cached = localStorage.getItem("dainiki_cached_moods");
+      if (cached) {
+        try {
+          setMoods(JSON.parse(cached));
+          return;
+        } catch {}
+      }
+      setMoods(DEFAULT_MOODS);
+    };
+
+    loadMoods();
+  }, [user]);
   
   // Track credentials to avoid redundant decryptions
   const prevCredsRef = useRef<{ username: string; key: string } | null>(null);
@@ -451,18 +498,34 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
     setEntries(prev => prev.map(e => e.id === id ? { ...e, is_deleted: false } : e));
   }, []);
 
+  const saveCustomMood = useCallback(async (name: string, emoji: string) => {
+    const { saveMood, fetchMoods } = await import("@/lib/actions/journal");
+    await saveMood(name, emoji);
+    try {
+      const data = await fetchMoods();
+      if (data && data.length > 0) {
+        setMoods(data);
+        localStorage.setItem("dainiki_cached_moods", JSON.stringify(data));
+      }
+    } catch (e) {
+      console.error("Failed to refresh moods after custom save:", e);
+    }
+  }, []);
+
 
 
   return (
     <JournalContext.Provider value={{
       entries,
+      moods,
       loading,
       syncing,
       sync,
       saveJournalEntry,
       deleteJournalEntry,
       toggleJournalArchive,
-      restoreJournalEntry
+      restoreJournalEntry,
+      saveCustomMood
     }}>
       {children}
     </JournalContext.Provider>

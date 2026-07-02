@@ -3,7 +3,6 @@
 import { useAuth } from "@/contexts/auth-context";
 import { useSettings } from "@/contexts/settings-context";
 import { useState, useEffect, useMemo } from "react";
-import { fetchMoods } from "@/lib/actions/journal";
 import { useJournal } from "@/contexts/journal-context";
 
 import { Search, ChevronRight, Database, Smile, Calendar as CalendarIcon, X, Filter } from "lucide-react";
@@ -50,8 +49,7 @@ export default function EntriesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
-  const { entries: allEntries, loading } = useJournal();
-  const [moods, setMoods] = useState<Mood[]>([]);
+  const { entries: allEntries, moods, loading } = useJournal();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMoodId, setSelectedMoodId] = useState<number | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
@@ -72,13 +70,7 @@ export default function EntriesPage() {
     }
   }, [searchParams]);
 
-  useEffect(() => {
-    const loadMoods = async () => {
-      const data = await fetchMoods();
-      setMoods(data as unknown as Mood[]);
-    };
-    loadMoods();
-  }, []);
+
 
   useEffect(() => {
     setVisibleCount(12);

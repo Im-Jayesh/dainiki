@@ -2,12 +2,11 @@
 
 import { useAuth } from "@/contexts/auth-context";
 import { useSettings } from "@/contexts/settings-context";
+import { useJournal } from "@/contexts/journal-context";
 import { useState, useEffect, useMemo } from "react";
-import { getAllEntries } from "@/lib/actions/journal";
 import { Zap, Map, ChevronRight } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { format, isSameDay, differenceInDays } from "date-fns";
-import { decrypt } from "@/lib/crypto";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Calendar, CalendarDayButton } from "@/components/ui/calendar";
@@ -36,30 +35,13 @@ export default function CalendarPage() {
   const { appearance } = useSettings();
   const router = useRouter();
   
-  const [entries, setEntries] = useState<Entry[]>([]);
+  const { entries: allEntries } = useJournal();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
 
-  useEffect(() => {
-    const loadEntries = async () => {
-      if (!user || !encryptionKey || !user.salt) return;
-      try {
-        const data = await getAllEntries({ view: "active" });
-        const decryptedEntries = await Promise.all(data.map(async (e) => {
-          try {
-            const dTitle = await decrypt(e.title, encryptionKey, user.salt);
-            return { ...e, title: dTitle } as Entry;
-          } catch {
-            return { ...e, title: "🔒 Decryption Failed" } as Entry;
-          }
-        }));
-        setEntries(decryptedEntries);
-      } catch (err) {
-        console.error(err);
-      }
-    };
-    loadEntries();
-  }, [user, encryptionKey]);
+  const entries = useMemo(() => {
+    return allEntries.filter(e => !e.is_deleted && !e.is_archived) as Entry[];
+  }, [allEntries]);
 
   const streak = useMemo(() => {
     if (entries.length === 0) return 0;
