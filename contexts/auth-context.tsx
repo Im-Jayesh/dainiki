@@ -48,11 +48,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLocked(true);
   }, []);
 
+  const triggerPrivateRoutesPreCache = useCallback(() => {
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.ready.then((reg) => {
+        if (reg.active) {
+          reg.active.postMessage({ type: "PRE_CACHE_AUTHENTICATED" });
+        }
+      }).catch(e => console.warn("Failed to get SW registration for pre-cache:", e));
+    }
+  }, []);
+
   const unlock = useCallback((key: string) => {
     sessionStorage.setItem("dainiki_vault_key", key);
     setEncryptionKeyState(key);
     setIsLocked(false);
-  }, []);
+    triggerPrivateRoutesPreCache();
+  }, [triggerPrivateRoutesPreCache]);
 
   const setEncryptionKey = (key: string | null) => {
     if (key) unlock(key);
@@ -122,6 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             settings: finalUser.settings || undefined
           });
           setIsVerified(finalUser.isVerified);
+          triggerPrivateRoutesPreCache();
         }
       } else {
         setUser(null);

@@ -110,3 +110,17 @@ self.addEventListener("fetch", (event) => {
     fetch(request).catch(() => caches.match(request))
   );
 });
+
+// Listen for post messages from the client (e.g. to pre-cache private routes on login)
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "PRE_CACHE_AUTHENTICATED") {
+    console.log("[Service Worker] Received PRE_CACHE_AUTHENTICATED message. Caching private routes.");
+    event.waitUntil(
+      caches.open(CACHE_NAME).then((cache) => {
+        return cache.addAll(["/entries", "/calendar", "/garden"]);
+      }).catch((err) => {
+        console.warn("[Service Worker] Private routes pre-cache failed (redirect or network error):", err);
+      })
+    );
+  }
+});
