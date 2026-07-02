@@ -71,8 +71,8 @@ export function SetupForm({ onSwitchToLogin, initialStep = 1, initialUsername = 
         master_key_pin: masterKeyPin
       });
       
-      if (res.error) {
-        throw new Error(res.error);
+      if (res.error || !res.recoveryKey) {
+        throw new Error(res.error || "Unknown error occurred");
       }
 
       setRecoveryKey(res.recoveryKey);
