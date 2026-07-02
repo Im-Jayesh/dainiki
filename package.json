@@ -12,7 +12,6 @@
     "@base-ui/react": "^1.5.0",
     "@google/generative-ai": "^0.24.1",
     "@libsql/client": "^0.17.3",
-    "@libsql/darwin-arm64": "^0.5.29",
     "@tailwindcss/typography": "^0.5.19",
     "@tiptap/extension-bubble-menu": "3.23.6",
     "@tiptap/extension-character-count": "3.23.6",
