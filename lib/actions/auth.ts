@@ -350,7 +350,7 @@ export async function deductAiCredit() {
   return { success: true, remaining: credits - 1 };
 }
 
-import { Client } from "@upstash/qstash";
+import { scheduleReminder } from "@/lib/reminders";
 
 export async function updateSettings(settings: any) {
   const session = await getSession();
@@ -360,68 +360,28 @@ export async function updateSettings(settings: any) {
   const currentSettings = JSON.parse(user.settings || '{}');
   const mergedSettings = { ...currentSettings, ...settings };
 
-  // QStash Integration for Exact Scheduling
-  const qstashToken = process.env.QSTASH_TOKEN;
-  // IMPORTANT: NEXT_PUBLIC_ vars are client-side only. Use server-side APP_URL.
-  const appUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`;
-
-  console.log(`[QStash] Token present: ${!!qstashToken}, AppURL: ${appUrl}, VERCEL_URL: ${process.env.VERCEL_URL}`);
-
-  if (qstashToken && appUrl) {
-    // Lazily create client inside function to ensure env vars are read at call time
-    const qstashClient = new Client({ token: qstashToken });
-
-    // If they updated reminders, sync with QStash
-    if (settings.reminders !== undefined || settings.timezone !== undefined) {
-      
-      // 1. Delete existing schedule if any
-      if (currentSettings.qstashScheduleId) {
-        try {
-          await qstashClient.schedules.delete(currentSettings.qstashScheduleId);
-          console.log(`[QStash] Deleted old schedule: ${currentSettings.qstashScheduleId}`);
-        } catch (e) {
-          console.error("[QStash] Failed to delete old schedule:", e);
-        }
-        mergedSettings.qstashScheduleId = null;
-      }
-
-      // 2. Create new schedule if enabled
-      if (mergedSettings.reminders?.enabled && mergedSettings.reminders?.time) {
-        const [h, m] = mergedSettings.reminders.time.split(":");
-        const userTimezone = mergedSettings.timezone || "UTC";
-
-        // QStash does NOT support a separate `timezone` param — timezone MUST be
-        // embedded in the cron string via the CRON_TZ= prefix.
-        // Without this, QStash evaluates cron in UTC, causing the wrong fire time.
-        const cron = `CRON_TZ=${userTimezone} ${Number(m)} ${Number(h)} * * *`;
-        
-        console.log(`[QStash] Creating schedule for user ${session.userId} → cron: "${cron}"`);
-
-        try {
-          // Clean up URL to avoid double slashes
-          const baseUrl = appUrl.replace(/\/$/, "");
-          const destination = `${baseUrl}/api/cron/reminders`;
-          
-          const res = await qstashClient.schedules.create({
-            destination: destination,
-            cron: cron,
-            body: JSON.stringify({ userId: session.userId }),
-            headers: {
-              "Authorization": `Bearer ${process.env.CRON_SECRET}`,
-              "Content-Type": "application/json"
-            }
-          });
-          mergedSettings.qstashScheduleId = res.scheduleId;
-          console.log(`[QStash] Schedule created: ${res.scheduleId} (cron: "${cron}")`);
-        } catch (e) {
-          console.error("[QStash] Failed to create schedule:", e);
-        }
-      } else {
-        console.log(`[QStash] Skipping schedule creation: enabled=${mergedSettings.reminders?.enabled}, time=${mergedSettings.reminders?.time}`);
-      }
+  // If they updated reminders or timezone, sync with QStash
+  if (settings.reminders !== undefined || settings.timezone !== undefined) {
+    if (mergedSettings.reminders?.enabled && mergedSettings.reminders?.time) {
+      const scheduleId = await scheduleReminder(
+        session.userId,
+        mergedSettings.reminders.enabled,
+        mergedSettings.reminders.time,
+        mergedSettings.timezone || "UTC",
+        mergedSettings.qstashScheduleId
+      );
+      mergedSettings.qstashScheduleId = scheduleId;
+    } else if (mergedSettings.qstashScheduleId) {
+      // If disabled, just delete the schedule
+      await scheduleReminder(
+        session.userId,
+        false,
+        "",
+        mergedSettings.timezone || "UTC",
+        mergedSettings.qstashScheduleId
+      );
+      mergedSettings.qstashScheduleId = null;
     }
-  } else {
-    console.warn(`[QStash] Skipped — token present: ${!!qstashToken}, appUrl: ${appUrl}`);
   }
 
   await db.execute({

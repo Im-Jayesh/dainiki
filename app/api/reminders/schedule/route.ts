@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { Client } from "@upstash/qstash";
+import { scheduleReminder } from "@/lib/reminders";
 
 export const dynamic = "force-dynamic";
 
@@ -45,44 +45,24 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
     const settings = JSON.parse((user.settings as string) || "{}");
-    const client = new Client({ token: qstashToken });
-
-    // Delete existing schedule if any
-    if (settings.qstashScheduleId) {
-      try {
-        await client.schedules.delete(settings.qstashScheduleId);
-        console.log(`[Reminders] Deleted old schedule: ${settings.qstashScheduleId}`);
-      } catch (e) {
-        console.warn(`[Reminders] Could not delete old schedule:`, e);
-      }
-      settings.qstashScheduleId = null;
-    }
-
-    // Create new schedule if enabled
+    
     let tz = timezone || "UTC";
     if (tz === "Asia/Calcutta") tz = "Asia/Kolkata";
     if (tz === "Asia/Katmandu") tz = "Asia/Kathmandu";
     if (tz === "Asia/Saigon") tz = "Asia/Ho_Chi_Minh";
 
+    const scheduleId = await scheduleReminder(
+      userId,
+      enabled,
+      time,
+      tz,
+      settings.qstashScheduleId
+    );
+
     if (enabled && time) {
-      const [h, m] = time.split(":");
-      const cron = `CRON_TZ=${tz} ${Number(m)} ${Number(h)} * * *`;
-      const destination = `${appUrl.replace(/\/$/, "")}/api/cron/reminders`;
-
-      console.log(`[Reminders] Creating schedule: ${cron} → ${destination}`);
-
-      const res = await client.schedules.create({
-        destination,
-        cron,
-        body: JSON.stringify({ userId }),
-        headers: {
-          "Authorization": `Bearer ${process.env.CRON_SECRET}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      settings.qstashScheduleId = res.scheduleId;
-      console.log(`[Reminders] Schedule created: ${res.scheduleId}`);
+      settings.qstashScheduleId = scheduleId;
+    } else {
+      settings.qstashScheduleId = null;
     }
 
     // Persist updated settings

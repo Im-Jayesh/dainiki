@@ -339,12 +339,83 @@ export function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => voi
                           </div>
                           <div className="space-y-2">
                             <label className="text-xs font-medium px-1 text-zinc-500">Scheduled Time</label>
-                            <Input 
-                              type="time" 
-                              value={reminderTime} 
-                              onChange={(e) => setReminderTime(e.target.value)}
-                              className="bg-zinc-50 dark:bg-zinc-900 border-none rounded-xl h-11 w-full" 
-                            />
+                            <div className="flex items-center gap-1.5">
+                              <div className="relative flex-1">
+                                <select 
+                                  value={(() => {
+                                    let h = parseInt(reminderTime.split(":")[0], 10);
+                                    if (isNaN(h)) h = 20;
+                                    if (h === 0) h = 12;
+                                    else if (h > 12) h -= 12;
+                                    return h.toString();
+                                  })()}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value, 10);
+                                    let h24 = parseInt(reminderTime.split(":")[0], 10);
+                                    if (isNaN(h24)) h24 = 20;
+                                    const isPM = h24 >= 12;
+                                    let newH24 = val;
+                                    if (isPM && val < 12) newH24 += 12;
+                                    if (!isPM && val === 12) newH24 = 0;
+                                    const mStr = reminderTime.split(":")[1] || "00";
+                                    setReminderTime(`${newH24.toString().padStart(2, '0')}:${mStr}`);
+                                  }}
+                                  className="w-full bg-zinc-50 dark:bg-zinc-900 border-none rounded-xl h-11 px-3 text-sm font-medium focus:ring-2 focus:ring-zinc-900/10 dark:focus:ring-zinc-100/10 transition-shadow appearance-none cursor-pointer outline-none"
+                                >
+                                  {Array.from({ length: 12 }).map((_, i) => (
+                                    <option key={i + 1} value={i + 1}>{i + 1}</option>
+                                  ))}
+                                </select>
+                                <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none opacity-40">
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                </div>
+                              </div>
+                              <span className="text-zinc-400 font-bold opacity-50">:</span>
+                              <div className="relative flex-1">
+                                <select 
+                                  value={reminderTime.split(":")[1] || "00"}
+                                  onChange={(e) => {
+                                    const hStr = reminderTime.split(":")[0] || "20";
+                                    setReminderTime(`${hStr}:${e.target.value.padStart(2, '0')}`);
+                                  }}
+                                  className="w-full bg-zinc-50 dark:bg-zinc-900 border-none rounded-xl h-11 px-3 text-sm font-medium focus:ring-2 focus:ring-zinc-900/10 dark:focus:ring-zinc-100/10 transition-shadow appearance-none cursor-pointer outline-none"
+                                >
+                                  {Array.from({ length: 12 }).map((_, i) => {
+                                    const m = (i * 5).toString().padStart(2, '0');
+                                    return <option key={m} value={m}>{m}</option>;
+                                  })}
+                                </select>
+                                <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none opacity-40">
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                </div>
+                              </div>
+                              <div className="relative flex-1">
+                                <select 
+                                  value={(() => {
+                                    let h = parseInt(reminderTime.split(":")[0], 10);
+                                    if (isNaN(h)) h = 20;
+                                    return h >= 12 ? "PM" : "AM";
+                                  })()}
+                                  onChange={(e) => {
+                                    const isPM = e.target.value === "PM";
+                                    let h24 = parseInt(reminderTime.split(":")[0], 10);
+                                    if (isNaN(h24)) h24 = 20;
+                                    let newH24 = h24;
+                                    if (isPM && h24 < 12) newH24 += 12;
+                                    if (!isPM && h24 >= 12) newH24 -= 12;
+                                    const mStr = reminderTime.split(":")[1] || "00";
+                                    setReminderTime(`${newH24.toString().padStart(2, '0')}:${mStr}`);
+                                  }}
+                                  className="w-full bg-zinc-50 dark:bg-zinc-900 border-none rounded-xl h-11 px-3 text-xs font-bold tracking-wider uppercase focus:ring-2 focus:ring-zinc-900/10 dark:focus:ring-zinc-100/10 transition-shadow appearance-none cursor-pointer outline-none"
+                                >
+                                  <option value="AM">AM</option>
+                                  <option value="PM">PM</option>
+                                </select>
+                                <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none opacity-40">
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                </div>
+                              </div>
+                            </div>
                           </div>
                           <Button
                             onClick={async () => {

@@ -5,6 +5,8 @@ import { sendEmailReminder } from "../lib/notifications";
 import { format } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 
+import { calculateUserStreak } from "../lib/reminders";
+
 // Load .env variables for standalone execution
 dotenv.config({ path: ".env.local" });
 dotenv.config({ path: ".env" });
@@ -46,11 +48,18 @@ cron.schedule("* * * * *", async () => {
         const localTimeString = format(localNow, "HH:mm");
 
         if (reminders.enabled && reminders.time === localTimeString && !notifiedThisMinute.has(`${user.username}-${localTimeString}`)) {
-          console.log(`[Cron] Sending email to ${user.username} (Local Time: ${localTimeString}, TZ: ${userTimezone})...`);
+          const entriesResult = await db.execute({
+            sql: "SELECT created_at FROM entries WHERE user_id = ? ORDER BY created_at DESC",
+            args: [user.id]
+          });
+          const streak = calculateUserStreak(entriesResult.rows, userTimezone);
+
+          console.log(`[Cron] Sending email to ${user.username} (Local Time: ${localTimeString}, TZ: ${userTimezone}, Streak: ${streak})...`);
           
           await sendEmailReminder(
             user.email as string,
-            user.username as string
+            user.username as string,
+            streak
           );
           
           notifiedThisMinute.add(`${user.username}-${localTimeString}`);

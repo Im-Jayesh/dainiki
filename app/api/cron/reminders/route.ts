@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sendEmailReminder } from "@/lib/notifications";
+import { calculateUserStreak } from "@/lib/reminders";
 import { format } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 
@@ -37,7 +38,7 @@ export async function GET(req: NextRequest) {
 
           // Verify they haven't written today (in their local timezone)
           const entriesResult = await db.execute({
-            sql: "SELECT created_at FROM entries WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
+            sql: "SELECT created_at FROM entries WHERE user_id = ? ORDER BY created_at DESC",
             args: [user.id]
           });
 
@@ -54,7 +55,8 @@ export async function GET(req: NextRequest) {
           }
 
           if (!alreadyWrittenToday) {
-            await sendEmailReminder(user.email as string, user.username as string);
+            const streak = calculateUserStreak(entriesResult.rows, userTimezone);
+            await sendEmailReminder(user.email as string, user.username as string, streak);
             results.push({ user: user.username, status: "sent" });
           } else {
             results.push({ user: user.username, status: "skipped (already written today)" });
@@ -113,7 +115,7 @@ export async function POST(req: NextRequest) {
 
     // Verify they haven't written today (in their local timezone)
     const entriesResult = await db.execute({
-      sql: "SELECT created_at FROM entries WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
+      sql: "SELECT created_at FROM entries WHERE user_id = ? ORDER BY created_at DESC",
       args: [user.id]
     });
 
@@ -135,8 +137,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, status: "skipped (already written today)" });
     }
 
-    console.log(`[Cron] Sending reminder email to ${user.username} (${user.email})`);
-    await sendEmailReminder(user.email as string, user.username as string);
+    const streak = calculateUserStreak(entriesResult.rows, userTimezone);
+    console.log(`[Cron] Sending reminder email to ${user.username} (${user.email}), Streak: ${streak}`);
+    await sendEmailReminder(user.email as string, user.username as string, streak);
     return NextResponse.json({ success: true, status: "sent" });
   } catch (err: any) {
     console.error(`[Cron] Error in POST handler:`, err);

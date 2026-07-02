@@ -110,6 +110,7 @@ export async function POST(req: NextRequest) {
 
     // Save scheduleId back to user settings
     settings.qstashScheduleId = res.scheduleId;
+    settings.timezone = timezone;
     await db.execute({
       sql: "UPDATE users SET settings = ? WHERE id = ?",
       args: [JSON.stringify(settings), userId]
